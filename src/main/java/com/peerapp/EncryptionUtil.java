@@ -1,37 +1,46 @@
 package com.peerapp;
 
-import javax.crypto.*;
-import javax.crypto.spec.SecretKeySpec;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
 
 public class EncryptionUtil {
-    private static final String AES = "AES";
-    private static final String HMAC_SHA256 = "HmacSHA256";
+    public static SecretKey generateSecretKey() {
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            keyGenerator.init(256); 
+            return keyGenerator.generateKey();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
 
     public static String encrypt(String data, SecretKey key) throws Exception {
-        Cipher cipher = Cipher.getInstance(AES);
+        Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.ENCRYPT_MODE, key);
-        byte[] encrypted = cipher.doFinal(data.getBytes());
-        return java.util.Base64.getEncoder().encodeToString(encrypted);
+        byte[] encryptedData = cipher.doFinal(data.getBytes());
+        return Base64.getEncoder().encodeToString(encryptedData);
     }
 
     public static String decrypt(String encryptedData, SecretKey key) throws Exception {
-        byte[] decoded = java.util.Base64.getDecoder().decode(encryptedData);
-        Cipher cipher = Cipher.getInstance(AES);
+        Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.DECRYPT_MODE, key);
-        byte[] decrypted = cipher.doFinal(decoded);
-        return new String(decrypted);
+        byte[] decodedData = Base64.getDecoder().decode(encryptedData);
+        return new String(cipher.doFinal(decodedData));
     }
 
     public static String generateHMAC(String data, SecretKey key) throws Exception {
-        Mac mac = Mac.getInstance(HMAC_SHA256);
-        mac.init(key);
-        byte[] hmac = mac.doFinal(data.getBytes());
-        return java.util.Base64.getEncoder().encodeToString(hmac);
+        Mac hmac = Mac.getInstance("HmacSHA256");
+        hmac.init(key);
+        byte[] hmacData = hmac.doFinal(data.getBytes());
+        return Base64.getEncoder().encodeToString(hmacData);
     }
 
-    public static boolean verifyHMAC(String data, String hmacToVerify, SecretKey key) throws Exception {
-        String hmac = generateHMAC(data, key);
-        return hmac.equals(hmacToVerify);
+    public static boolean verifyHMAC(String data, String hmac, SecretKey key) throws Exception {
+        return hmac.equals(generateHMAC(data, key));
     }
 }

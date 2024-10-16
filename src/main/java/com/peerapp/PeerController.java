@@ -4,15 +4,19 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-
-import javax.crypto.SecretKey;
 import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 
 public class PeerController {
     @FXML
     private TextField recipientField;
+
+    @FXML
+    private TextField messageField;
+
     @FXML
     private Button sendButton;
+
     @FXML
     private TextArea messagesArea;
 
@@ -35,14 +39,22 @@ public class PeerController {
     }
 
     private void sendMessage() {
-        String recipient = recipientField.getText().trim(); // Ensure no leading/trailing spaces
-        if (!recipient.isEmpty()) {
-            String message = "Hello from " + peer.getUserId(); // Default message to be sent
-            peer.sendMessage(recipient, message, "localhost");
+        String recipient = recipientField.getText().trim();
+        String message = messageField.getText().trim();
+
+        if (recipient.isEmpty() && message.isEmpty()) {
+            messagesArea.appendText("Please enter a recipient and a message.\n");
+        }
+        else if (recipient.isEmpty()) {
+            messagesArea.appendText("Please enter a recipient.\n");
+        } 
+        else if (message.isEmpty()) {
+            messagesArea.appendText("Please enter a message.\n");
+        }
+        else {
+            peer.sendMessage(recipient, message);
             messagesArea.appendText("Sent to " + recipient + ": " + message + "\n");
             recipientField.clear();
-        } else {
-            messagesArea.appendText("Please enter a recipient.\n");
         }
     }
 }

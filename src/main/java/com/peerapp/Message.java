@@ -7,14 +7,12 @@ public class Message implements Serializable {
     private String recipient;
     private String encryptedContent;
     private String hmac;
-    private String originalContent;
 
-    public Message(String sender, String recipient, String encryptedContent, String hmac, String originalContent) {
+    public Message(String sender, String recipient, String encryptedContent, String hmac) {
         this.sender = sender;
         this.recipient = recipient;
         this.encryptedContent = encryptedContent;
         this.hmac = hmac;
-        this.originalContent = originalContent;
     }
 
     public String getSender() {
@@ -31,9 +29,5 @@ public class Message implements Serializable {
 
     public String getHmac() {
         return hmac;
-    }
-
-    public String getOriginalContent() {
-        return originalContent;
     }
 }

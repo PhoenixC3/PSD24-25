@@ -1,7 +1,7 @@
-com\peerapp\P2PApp.class
 com\peerapp\PeerController.class
 com\peerapp\Peer$MessageHandler.class
 com\peerapp\Peer.class
-module-info.class
 com\peerapp\Message.class
 com\peerapp\EncryptionUtil.class
+com\peerapp\P2PApp.class
+module-info.class

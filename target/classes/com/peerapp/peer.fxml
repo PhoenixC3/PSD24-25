@@ -7,6 +7,7 @@
 
 <AnchorPane xmlns:fx="http://javafx.com/fxml" fx:controller="com.peerapp.PeerController" prefHeight="400.0" prefWidth="600.0">
     <TextField fx:id="recipientField" layoutX="20.0" layoutY="20.0" prefWidth="400.0" promptText="Enter recipient ID"/>
-    <Button fx:id="sendButton" layoutX="450.0" layoutY="20.0" text="Send"/>
-    <TextArea fx:id="messagesArea" layoutX="20.0" layoutY="70.0" prefHeight="300.0" prefWidth="560.0" editable="false" wrapText="true" promptText="Messages will appear here..."/>
+    <TextField fx:id="messageField" layoutX="20.0" layoutY="60.0" prefWidth="400.0" promptText="Enter message"/>
+    <Button fx:id="sendButton" layoutX="450.0" layoutY="60.0" text="Send"/>
+    <TextArea fx:id="messagesArea" layoutX="20.0" layoutY="100.0" prefHeight="300.0" prefWidth="560.0" editable="false" wrapText="true" promptText="Messages will appear here..."/>
 </AnchorPane>

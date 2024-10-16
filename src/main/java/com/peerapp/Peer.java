@@ -2,8 +2,8 @@ package com.peerapp;
 
 import javax.net.ssl.*;
 import java.io.*;
-import java.net.SocketException;
 import java.security.KeyStore;
+import java.security.PrivateKey;
 import javax.crypto.SecretKey;
 
 public class Peer {
@@ -26,7 +26,7 @@ public class Peer {
 
     private SSLServerSocket createServerSocket() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("JKS");
-        try (FileInputStream keyStoreInput = new FileInputStream("keystores/" + userId + ".jks")) {
+        try (FileInputStream keyStoreInput = new FileInputStream("keystores/" + userId + "_keystore.jks")) {
             keyStore.load(keyStoreInput, "password".toCharArray());
         }
 
@@ -51,13 +51,13 @@ public class Peer {
         }
     }
 
-    public void sendMessage(String recipient, String content, String host) {
+    public void sendMessage(String recipient, String content) {
         try {
             String encryptedContent = EncryptionUtil.encrypt(content, predefinedKey);
             String hmac = EncryptionUtil.generateHMAC(content, predefinedKey);
-            Message message = new Message(userId, recipient, encryptedContent, hmac, content);
+            Message message = new Message(userId, recipient, encryptedContent, hmac);
 
-            try (SSLSocket socket = createClientSocket(host);
+            try (SSLSocket socket = createClientSocket(recipient);
                  ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream())) {
                 oos.writeObject(message);
                 oos.flush();
@@ -67,55 +67,60 @@ public class Peer {
         }
     }
 
-    private SSLSocket createClientSocket(String host) throws Exception {
+    private SSLSocket createClientSocket(String recipient) throws Exception {
+        // Load the truststore from a file.
         KeyStore trustStore = KeyStore.getInstance("JKS");
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
-            trustStore.load(trustStoreInput, "password".toCharArray());
+            trustStore.load(trustStoreInput, "password".toCharArray()); // Replace "password" with the actual password.
         }
-
+    
+        // Initialize the TrustManagerFactory using the loaded truststore.
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         trustManagerFactory.init(trustStore);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
+    
+        // Create SSLContext with the TrustManagers from the TrustManagerFactory.
+        SSLContext sslContext = SSLContext.getInstance("TLS"); // Or "TLSv1.2" if you want to specify a version.
         sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
-
+    
+        // Get the SSLSocketFactory from the SSLContext.
         SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-        return (SSLSocket) sslSocketFactory.createSocket(host, PORT);
+    
+        // Fetch IP and port of the peer from the database.
+        String ip = DatabaseUtil.getPeerIp(recipient);
+        int port = DatabaseUtil.getPeerPort(recipient);
+    
+        // Create and return the SSLSocket, connecting to the peer.
+        return (SSLSocket) sslSocketFactory.createSocket(ip, port);
     }
 
     private class MessageHandler implements Runnable {
-    private SSLSocket socket;
+        private SSLSocket socket;
 
-    public MessageHandler(SSLSocket socket) {
-        this.socket = socket;
-    }
+        public MessageHandler(SSLSocket socket) {
+            this.socket = socket;
+        }
 
-    @Override
-    public void run() {
-        try (ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
-            Message message = (Message) ois.readObject();
-            if (EncryptionUtil.verifyHMAC(message.getOriginalContent(), message.getHmac(), predefinedKey)) {
-                String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), predefinedKey);
-                System.out.println("Received message from " + message.getSender() + ": " + decryptedContent);
-            } else {
-                System.out.println("HMAC verification failed for message from " + message.getSender());
-            }
-        } catch (SocketException se) {
-            System.err.println("Socket exception: " + se.getMessage());
-            se.printStackTrace(); // This will give more context about the error
-        } catch (EOFException eof) {
-            System.err.println("Connection closed by the client: " + eof.getMessage());
-        } catch (Exception e) {
-            System.err.println("Error while reading message: " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            try {
-                socket.close(); // Ensure the socket is closed
-            } catch (IOException e) {
+        @Override
+        public void run() {
+            try (ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
+                Message message = (Message) ois.readObject();
+                if (EncryptionUtil.verifyHMAC(message.getEncryptedContent(), message.getHmac(), predefinedKey)) {
+                    String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), predefinedKey);
+                    System.out.println("Received message from " + message.getSender() + ": " + decryptedContent);
+                } else {
+                    System.out.println("HMAC verification failed for message from " + message.getSender());
+                }
+            } catch (Exception e) {
                 e.printStackTrace();
+            } finally {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
-}
 
+    
 }
