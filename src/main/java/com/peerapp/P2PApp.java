@@ -4,15 +4,10 @@ import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.ListView;
 import javafx.stage.Stage;
-
-import java.lang.reflect.Method;
 import java.net.BindException;
 import java.net.ServerSocket;
 import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.Random;
 
@@ -107,7 +102,7 @@ public class P2PApp extends Application {
             try (ServerSocket serverSocket = new ServerSocket(port)) {
                 break;
             } catch (BindException e) {
-                // Port is already in use; try the next random port
+                // Port is already in use, try the next random port
                 findAvailableRandomPort();
             } catch (Exception e) {
                 e.printStackTrace();

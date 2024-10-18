@@ -1,19 +1,18 @@
 package com.peerapp;
 
-import java.io.*;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Base64;
 
 public class UserDatabase {
     public boolean registerUser(String username, String password) {
         byte[] salt = PasswordUtil.generateSalt();
         Connection conn = null;
         PreparedStatement stmt = null;
+
         try {
             String hashedPassword = PasswordUtil.hashPassword(password, salt);
             conn = DatabaseUtil.connect();
@@ -21,10 +20,10 @@ public class UserDatabase {
             
             stmt = conn.prepareStatement(insertQuery);
             stmt.setString(1, username);
-            stmt.setString(2, password); //MUDAR AQ
+            stmt.setString(2, hashedPassword);
             stmt.setBytes(3, salt);
-            stmt.setString(4, "127.0.0.1");
-            stmt.setInt(5, 0);
+            stmt.setString(4, "127.0.0.1"); //Mesma maquina
+            stmt.setInt(5, 0); //Placeholder ate encontrar porta
             stmt.executeUpdate();
 
             return true;
@@ -63,9 +62,8 @@ public class UserDatabase {
                 if (rs.next()) {
                     byte[] salt = rs.getBytes("salt");
                     String storedPassword = rs.getString("password");
-                    String hashedPassword = PasswordUtil.hashPassword(password, salt);
 
-                    return storedPassword.equals(hashedPassword);
+                    return PasswordUtil.verifyPassword(password, storedPassword, salt);
                 }
             } finally {
                 try {
@@ -80,7 +78,7 @@ public class UserDatabase {
                     return false;
                 }
             }
-        } catch (SQLException | NoSuchAlgorithmException | InvalidKeySpecException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return false;

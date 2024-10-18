@@ -4,18 +4,20 @@ import javax.net.ssl.*;
 import java.io.*;
 import java.security.KeyStore;
 import java.security.PrivateKey;
+import java.security.PublicKey;
+
 import javax.crypto.SecretKey;
 
 public class Peer {
     private String userId;
     private SSLServerSocket serverSocket;
     private final int PORT;
-    private final SecretKey predefinedKey;
+    private PeerController peerController;
 
-    public Peer(String userId, int port, SecretKey key) throws Exception {
+    public Peer(String userId, int port, PeerController peerController) throws Exception {
         this.userId = userId;
         this.PORT = port;
-        this.predefinedKey = key;
+        this.peerController = peerController;
         this.serverSocket = createServerSocket();
         new Thread(this::listenForMessages).start();
     }
@@ -44,7 +46,7 @@ public class Peer {
         while (true) {
             try {
                 SSLSocket socket = (SSLSocket) serverSocket.accept();
-                new Thread(new MessageHandler(socket)).start();
+                new Thread(new MessageHandler(socket, peerController)).start();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -53,10 +55,22 @@ public class Peer {
 
     public void sendMessage(String recipient, String content) {
         try {
-            String encryptedContent = EncryptionUtil.encrypt(content, predefinedKey);
-            String hmac = EncryptionUtil.generateHMAC(content, predefinedKey);
-            Message message = new Message(userId, recipient, encryptedContent, hmac);
+            //Gerar a secret key da mensagem e encriptar com a public key do recipient
+            SecretKey key = EncryptionUtil.generateSecretKey();
+            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks","password", recipient);
+            byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
 
+            //Encriptar o conteudo da mensagem com a secret key
+            String encryptedContent = EncryptionUtil.encrypt(content, key);
+
+            //Assinar a mensagem para verificar integridade
+            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", "password", userId, "password");
+            String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
+
+            //Construir objeto
+            Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
+
+            //Enviar pelo socket
             try (SSLSocket socket = createClientSocket(recipient);
                  ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream())) {
                 oos.writeObject(message);
@@ -68,46 +82,54 @@ public class Peer {
     }
 
     private SSLSocket createClientSocket(String recipient) throws Exception {
-        // Load the truststore from a file.
         KeyStore trustStore = KeyStore.getInstance("JKS");
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
-            trustStore.load(trustStoreInput, "password".toCharArray()); // Replace "password" with the actual password.
+            trustStore.load(trustStoreInput, "password".toCharArray());
         }
-    
-        // Initialize the TrustManagerFactory using the loaded truststore.
+
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         trustManagerFactory.init(trustStore);
-    
-        // Create SSLContext with the TrustManagers from the TrustManagerFactory.
-        SSLContext sslContext = SSLContext.getInstance("TLS"); // Or "TLSv1.2" if you want to specify a version.
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
-    
-        // Get the SSLSocketFactory from the SSLContext.
+
         SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
     
-        // Fetch IP and port of the peer from the database.
         String ip = DatabaseUtil.getPeerIp(recipient);
         int port = DatabaseUtil.getPeerPort(recipient);
     
-        // Create and return the SSLSocket, connecting to the peer.
         return (SSLSocket) sslSocketFactory.createSocket(ip, port);
     }
 
     private class MessageHandler implements Runnable {
         private SSLSocket socket;
+        private PeerController peerController;
 
-        public MessageHandler(SSLSocket socket) {
+        public MessageHandler(SSLSocket socket, PeerController peerController) {
             this.socket = socket;
+            this.peerController = peerController;
         }
 
         @Override
         public void run() {
             try (ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
                 Message message = (Message) ois.readObject();
-                if (EncryptionUtil.verifyHMAC(message.getEncryptedContent(), message.getHmac(), predefinedKey)) {
-                    String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), predefinedKey);
-                    System.out.println("Received message from " + message.getSender() + ": " + decryptedContent);
+                PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks","password", message.getSender());
+
+                if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
+                    PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", "password", userId, "password");
+                    SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
+
+                    String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey);
+
+                    javafx.application.Platform.runLater(() -> {
+                        peerController.appendReceivedMessage(message.getSender(), decryptedContent);
+                    });
                 } else {
+                    javafx.application.Platform.runLater(() -> {
+                        peerController.appendError("HMAC verification failed for message from " + message.getSender());
+                    });
+
                     System.out.println("HMAC verification failed for message from " + message.getSender());
                 }
             } catch (Exception e) {

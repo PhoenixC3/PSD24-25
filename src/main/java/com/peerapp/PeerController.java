@@ -4,8 +4,6 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
 
 public class PeerController {
     @FXML
@@ -21,17 +19,11 @@ public class PeerController {
     private TextArea messagesArea;
 
     private Peer peer;
-    private SecretKey secretKey;
 
     public void initialize(String userId, int port) {
         try {
-            // Generate a secret key for encryption
-            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-            keyGen.init(128);
-            secretKey = keyGen.generateKey();
-
             // Start peer
-            peer = new Peer(userId, port, secretKey);
+            peer = new Peer(userId, port, this);
             sendButton.setOnAction(event -> sendMessage());
         } catch (Exception e) {
             e.printStackTrace();
@@ -55,6 +47,15 @@ public class PeerController {
             peer.sendMessage(recipient, message);
             messagesArea.appendText("Sent to " + recipient + ": " + message + "\n");
             recipientField.clear();
+            messageField.clear();
         }
+    }
+
+    public void appendReceivedMessage(String sender, String message) {
+        messagesArea.appendText("Received from " + sender + ": " + message + "\n");
+    }
+
+    public void appendError(String error) {
+        messagesArea.appendText(error + "\n");
     }
 }

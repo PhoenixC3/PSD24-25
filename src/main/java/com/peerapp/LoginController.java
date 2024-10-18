@@ -8,9 +8,6 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.stage.Stage;
-import javafx.scene.Scene;
-import javafx.fxml.FXMLLoader;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -49,21 +46,22 @@ public class LoginController {
         PreparedStatement stmt = null;
 
         try {
-            String query = "SELECT * FROM peers WHERE username = ? AND password = ?";
+            String query = "SELECT * FROM peers WHERE username = ?";
 
             conn = DatabaseUtil.connect();
             stmt = conn.prepareStatement(query);
             stmt.setString(1, username);
-            stmt.setString(2, password);
             ResultSet resultSet = stmt.executeQuery();
             
             if (resultSet.next()) {
-                // Credentials are correct, proceed to messaging
-                String userId = resultSet.getString("username");
-
-                openP2PApp(userId);
+                if (userDatabase.authenticateUser(username, password)) {
+                    openP2PApp(username);
+                }
+                else {
+                    showAlert("Error", "Incorrect password.");
+                }
             } else {
-                showAlert("Error", "Invalid username or password.");
+                showAlert("Error", "User does not exist.");
             }
         } catch (Exception e) {
             e.printStackTrace();
