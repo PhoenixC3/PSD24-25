@@ -20,10 +20,10 @@ public class PeerController {
 
     private Peer peer;
 
-    public void initialize(String userId, int port) {
+    public void initialize(String userId, int port, String pasword) {
         try {
             // Start peer
-            peer = new Peer(userId, port, this);
+            peer = new Peer(userId, pasword, port, this);
             sendButton.setOnAction(event -> sendMessage());
         } catch (Exception e) {
             e.printStackTrace();

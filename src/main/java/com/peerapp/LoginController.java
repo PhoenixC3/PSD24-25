@@ -8,9 +8,6 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.stage.Stage;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 
 public class LoginController {
     @FXML
@@ -24,7 +21,7 @@ public class LoginController {
     @FXML
     private Text statusText;
 
-    private UserDatabase userDatabase = new UserDatabase();
+    private DatabaseUtil userDatabase = new DatabaseUtil();
 
     @FXML
     public void initialize() {
@@ -42,41 +39,18 @@ public class LoginController {
             return;
         }
 
-        Connection conn = null;
-        PreparedStatement stmt = null;
-
         try {
-            String query = "SELECT * FROM peers WHERE username = ?";
-
-            conn = DatabaseUtil.connect();
-            stmt = conn.prepareStatement(query);
-            stmt.setString(1, username);
-            ResultSet resultSet = stmt.executeQuery();
+            int port = userDatabase.authenticateUser(username, password);
             
-            if (resultSet.next()) {
-                if (userDatabase.authenticateUser(username, password)) {
-                    openP2PApp(username);
-                }
-                else {
-                    showAlert("Error", "Incorrect password.");
-                }
-            } else {
-                showAlert("Error", "User does not exist.");
+            if (port != -1) {
+                openP2PApp(username, port, password);
+            }
+            else {
+                showAlert("Error", "Incorrect password.");
             }
         } catch (Exception e) {
             e.printStackTrace();
             showAlert("Error", "An error occurred while trying to log in.");
-        } finally {
-            try {
-                if (stmt != null) {
-                    stmt.close();
-                }
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
         }
     }
 
@@ -96,13 +70,15 @@ public class LoginController {
         }
     }
 
-    private void openP2PApp(String userId) {
+    private void openP2PApp(String userId, int port, String password) {
         // Close login window
         Stage stage = (Stage) loginButton.getScene().getWindow();
         stage.close();
 
         // Open the P2P messaging app
         System.setProperty("userId", userId);
+        System.setProperty("userPort", Integer.toString(port));
+        System.setProperty("userPassword", password);
 
         P2PApp app = new P2PApp();
 

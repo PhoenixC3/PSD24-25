@@ -22,8 +22,24 @@
         </dependency>
         <dependency>
             <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.70</version>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78.1</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/bcprov-jdk18on-1.78.1.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.78.1</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/bcpkix-jdk18on-1.78.1.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcutil-jdk18on</artifactId>
+            <version>1.78.1</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/bcutil-jdk18on-1.78.1.jar</systemPath>
         </dependency>
         <dependency>
             <groupId>org.xerial</groupId>

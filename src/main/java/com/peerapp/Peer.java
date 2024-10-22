@@ -10,12 +10,14 @@ import javax.crypto.SecretKey;
 
 public class Peer {
     private String userId;
+    private String password;
     private SSLServerSocket serverSocket;
     private final int PORT;
     private PeerController peerController;
 
-    public Peer(String userId, int port, PeerController peerController) throws Exception {
+    public Peer(String userId, String password, int port, PeerController peerController) throws Exception {
         this.userId = userId;
+        this.password = password;
         this.PORT = port;
         this.peerController = peerController;
         this.serverSocket = createServerSocket();
@@ -29,11 +31,11 @@ public class Peer {
     private SSLServerSocket createServerSocket() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("JKS");
         try (FileInputStream keyStoreInput = new FileInputStream("keystores/" + userId + "_keystore.jks")) {
-            keyStore.load(keyStoreInput, "password".toCharArray());
+            keyStore.load(keyStoreInput, password.toCharArray());
         }
 
         KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        keyManagerFactory.init(keyStore, "password".toCharArray());
+        keyManagerFactory.init(keyStore, password.toCharArray());
 
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(keyManagerFactory.getKeyManagers(), null, null);
@@ -54,37 +56,97 @@ public class Peer {
     }
 
     public void sendMessage(String recipient, String content) {
+        SSLSocket socket = null;
+        ObjectOutputStream oos = null;
+
         try {
-            //Gerar a secret key da mensagem e encriptar com a public key do recipient
+            // Generate secret key and encrypt with recipient's public key
             SecretKey key = EncryptionUtil.generateSecretKey();
-            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks","password", recipient);
+            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
             byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
-
-            //Encriptar o conteudo da mensagem com a secret key
+    
+            // Encrypt the message content
             String encryptedContent = EncryptionUtil.encrypt(content, key);
-
-            //Assinar a mensagem para verificar integridade
-            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", "password", userId, "password");
+    
+            // Sign the message
+            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
             String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
-
-            //Construir objeto
+    
+            // Create message object
             Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
-
-            //Enviar pelo socket
-            try (SSLSocket socket = createClientSocket(recipient);
-                 ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream())) {
-                oos.writeObject(message);
-                oos.flush();
-            }
+    
+            // Send the message using SSL socket
+            socket = createClientSocket(recipient);
+            oos = new ObjectOutputStream(socket.getOutputStream());
+            oos.writeObject(message);
+            oos.flush();
+    
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            try {
+                if (oos != null) oos.close();
+                if (socket != null) socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
+    
 
     private SSLSocket createClientSocket(String recipient) throws Exception {
         KeyStore trustStore = KeyStore.getInstance("JKS");
+
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
-            trustStore.load(trustStoreInput, "password".toCharArray());
+            trustStore.load(trustStoreInput, password.toCharArray());
+        }
+
+        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        trustManagerFactory.init(trustStore);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+
+        SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+        SSLSocket svSock = null;
+        ObjectOutputStream oos = null;
+        ObjectInputStream in = null;
+        String ip = null;
+        int port = -1;
+    
+        try {
+            svSock = contactServer();
+
+            oos = new ObjectOutputStream(svSock.getOutputStream());
+            in = new ObjectInputStream(svSock.getInputStream());
+
+            oos.writeObject("GETPEER");
+            oos.flush();
+            oos.writeObject(recipient);
+            oos.flush();
+
+            ip = (String) in.readObject();
+            port = (int) in.readObject();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (oos != null) oos.close();
+                if (svSock != null) svSock.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    
+        return (SSLSocket) sslSocketFactory.createSocket(ip, port);
+    }
+
+    private SSLSocket contactServer() throws Exception {
+        KeyStore trustStore = KeyStore.getInstance("JKS");
+        try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
+            trustStore.load(trustStoreInput, password.toCharArray());
         }
 
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
@@ -95,10 +157,7 @@ public class Peer {
 
         SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
     
-        String ip = DatabaseUtil.getPeerIp(recipient);
-        int port = DatabaseUtil.getPeerPort(recipient);
-    
-        return (SSLSocket) sslSocketFactory.createSocket(ip, port);
+        return (SSLSocket) sslSocketFactory.createSocket("127.0.0.1", 8080);
     }
 
     private class MessageHandler implements Runnable {
@@ -112,37 +171,37 @@ public class Peer {
 
         @Override
         public void run() {
-            try (ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
+            ObjectInputStream ois = null;
+            try {
+                ois = new ObjectInputStream(socket.getInputStream());
                 Message message = (Message) ois.readObject();
-                PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks","password", message.getSender());
-
+                
+                PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
+                
+                // Verify the signature of the message
                 if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
-                    PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", "password", userId, "password");
+                    PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                     SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
 
                     String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey);
 
-                    javafx.application.Platform.runLater(() -> {
-                        peerController.appendReceivedMessage(message.getSender(), decryptedContent);
-                    });
+                    // Update the UI with the received message
+                    javafx.application.Platform.runLater(() -> peerController.appendReceivedMessage(message.getSender(), decryptedContent));
                 } else {
-                    javafx.application.Platform.runLater(() -> {
-                        peerController.appendError("HMAC verification failed for message from " + message.getSender());
-                    });
-
+                    javafx.application.Platform.runLater(() -> peerController.appendError("HMAC verification failed for message from " + message.getSender()));
                     System.out.println("HMAC verification failed for message from " + message.getSender());
                 }
+
             } catch (Exception e) {
                 e.printStackTrace();
             } finally {
                 try {
-                    socket.close();
+                    if (ois != null) ois.close();
+                    if (socket != null) socket.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
         }
-    }
-
-    
+    }   
 }

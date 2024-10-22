@@ -3,15 +3,17 @@ package com.peerapp;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import javax.crypto.Mac;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
-
 import java.io.FileInputStream;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.cert.Certificate;
+import java.security.spec.KeySpec;
 import java.util.Base64;
 
 public class EncryptionUtil {
@@ -128,5 +130,29 @@ public class EncryptionUtil {
         }
 
         return privateKey;
+    }
+
+    public static String hashPassword(String password, byte[] salt) throws Exception {
+        KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 1000, 128);
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+
+        byte[] hash = factory.generateSecret(spec).getEncoded();
+        return Base64.getEncoder().encodeToString(hash);
+    }
+
+    public static byte[] generateSalt() {
+        byte[] salt = new byte[16];
+        new SecureRandom().nextBytes(salt);
+        return salt;
+    }
+
+    public static boolean verifyPassword(String inputPassword, String storedHash, byte[] salt) throws Exception {
+        KeySpec spec = new PBEKeySpec(inputPassword.toCharArray(), salt, 1000, 128);
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+
+        byte[] hash = factory.generateSecret(spec).getEncoded();
+        String newHash = Base64.getEncoder().encodeToString(hash);
+
+        return newHash.equals(storedHash);
     }
 }
