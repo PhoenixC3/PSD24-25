@@ -13,6 +13,7 @@ import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.security.spec.KeySpec;
 import java.util.Base64;
 
@@ -105,7 +106,8 @@ public class EncryptionUtil {
         }
 
         // Get the certificate using the alias
-        Certificate certificate = trustStore.getCertificate(alias);
+        X509Certificate certificate = (X509Certificate) trustStore.getCertificate(alias);
+        
         if (certificate == null) {
             throw new Exception("Certificate not found for alias: " + alias);
         }

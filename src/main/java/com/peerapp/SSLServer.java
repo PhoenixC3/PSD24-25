@@ -24,7 +24,7 @@ public class SSLServer {
         "salt BLOB NOT NULL, " +
         "ip TEXT NOT NULL, " +
         "port INTEGER NOT NULL, " +
-        "pubKey BLOB NOT NULL);";
+        "cert BLOB NOT NULL);";
 
     public static void main(String[] args) {
         Connection conn = null;
@@ -177,10 +177,13 @@ class ClientHandler extends Thread {
         
                                 String peerIp = getPeerIp(peerUsername);
                                 int peerPort = getPeerPort(peerUsername);
+                                byte[] peerCert = getPeerCert(peerUsername);
         
                                 out.writeObject(peerIp);
                                 out.flush();
                                 out.writeObject(peerPort);
+                                out.flush();
+                                out.writeObject(peerCert);
                                 out.flush();
         
                                 break;
@@ -220,7 +223,7 @@ class ClientHandler extends Thread {
 
         try {
             conn = connect();
-            String insertQuery = "INSERT INTO peers (username, password, salt, ip, port, pubKey) VALUES (?, ?, ?, ?, ?, ?)";
+            String insertQuery = "INSERT INTO peers (username, password, salt, ip, port, cert) VALUES (?, ?, ?, ?, ?, ?)";
             
             stmt = conn.prepareStatement(insertQuery);
 
@@ -372,6 +375,47 @@ class ClientHandler extends Thread {
         }
 
         return port;
+    }
+
+    // Method to retrieve the port based on the username
+    private static byte[] getPeerCert(String username) {
+        String selectQuery = "SELECT cert FROM peers WHERE username = ?";
+        byte[] cert = null;
+        Connection conn = null;
+        PreparedStatement stmt = null;
+
+        try {
+            conn = connect();
+            stmt = conn.prepareStatement(selectQuery);
+
+            // Set the username in the query
+            stmt.setString(1, username);
+
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                cert = rs.getBytes("cert");
+            } else {
+                System.out.println("No peer found with the username: " + username);
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Error while fetching cert: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+                if (conn != null) {
+                    conn.close();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return cert;
     }
 }
 

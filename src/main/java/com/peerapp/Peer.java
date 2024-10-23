@@ -5,6 +5,8 @@ import java.io.*;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 
 import javax.crypto.SecretKey;
 
@@ -60,6 +62,9 @@ public class Peer {
         ObjectOutputStream oos = null;
 
         try {
+            // Send the message using SSL socket
+            socket = createClientSocket(recipient);
+
             // Generate secret key and encrypt with recipient's public key
             SecretKey key = EncryptionUtil.generateSecretKey();
             PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
@@ -74,9 +79,6 @@ public class Peer {
     
             // Create message object
             Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
-    
-            // Send the message using SSL socket
-            socket = createClientSocket(recipient);
             oos = new ObjectOutputStream(socket.getOutputStream());
             oos.writeObject(message);
             oos.flush();
@@ -95,25 +97,12 @@ public class Peer {
     
 
     private SSLSocket createClientSocket(String recipient) throws Exception {
-        KeyStore trustStore = KeyStore.getInstance("JKS");
-
-        try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
-            trustStore.load(trustStoreInput, password.toCharArray());
-        }
-
-        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        trustManagerFactory.init(trustStore);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
-
-        SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-
         SSLSocket svSock = null;
         ObjectOutputStream oos = null;
         ObjectInputStream in = null;
         String ip = null;
         int port = -1;
+        byte[] cert = null;
     
         try {
             svSock = contactServer();
@@ -128,6 +117,33 @@ public class Peer {
 
             ip = (String) in.readObject();
             port = (int) in.readObject();
+            cert = (byte[]) in.readObject();
+
+            CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+            ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
+            X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
+
+            KeyStore trustStore = KeyStore.getInstance("JKS");
+
+            try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
+                trustStore.load(trustStoreInput, password.toCharArray());
+            }
+
+            trustStore.setCertificateEntry(recipient, certificate);
+
+            try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
+                trustStore.store(fos, password.toCharArray());
+            }
+    
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
+    
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+    
+            SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+            return (SSLSocket) sslSocketFactory.createSocket(ip, port);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -139,8 +155,8 @@ public class Peer {
                 e.printStackTrace();
             }
         }
-    
-        return (SSLSocket) sslSocketFactory.createSocket(ip, port);
+
+        return null;
     }
 
     private SSLSocket contactServer() throws Exception {
@@ -172,9 +188,47 @@ public class Peer {
         @Override
         public void run() {
             ObjectInputStream ois = null;
+            ObjectInputStream oisServer = null;
+            SSLSocket svSock = null;
+            ObjectOutputStream oos = null;
+            String ip = null;
+            int port = -1;
+            byte[] cert = null;
+
             try {
                 ois = new ObjectInputStream(socket.getInputStream());
                 Message message = (Message) ois.readObject();
+
+                // Add trusted
+                svSock = contactServer();
+
+                oos = new ObjectOutputStream(svSock.getOutputStream());
+                oisServer = new ObjectInputStream(svSock.getInputStream());
+
+                oos.writeObject("GETPEER");
+                oos.flush();
+                oos.writeObject(message.getSender());
+                oos.flush();
+
+                ip = (String) oisServer.readObject();
+                port = (int) oisServer.readObject();
+                cert = (byte[]) oisServer.readObject();
+
+                CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
+                X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
+
+                KeyStore trustStore = KeyStore.getInstance("JKS");
+
+                try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
+                    trustStore.load(trustStoreInput, password.toCharArray());
+                }
+
+                trustStore.setCertificateEntry(message.getSender(), certificate);
+
+                try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
+                    trustStore.store(fos, password.toCharArray());
+                }
                 
                 PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
                 
@@ -198,6 +252,10 @@ public class Peer {
                 try {
                     if (ois != null) ois.close();
                     if (socket != null) socket.close();
+
+                    if (oisServer != null) oisServer.close();
+                    if (oos != null) oos.close();
+                    if (svSock != null) svSock.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
