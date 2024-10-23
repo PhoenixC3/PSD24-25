@@ -30,7 +30,7 @@ public class LoginController {
     }
 
     @FXML
-    public void login() {
+    private void login() {
         String username = usernameField.getText();
         String password = passwordField.getText();
         
@@ -42,15 +42,23 @@ public class LoginController {
         try {
             int port = userDatabase.authenticateUser(username, password);
             
-            if (port != -1) {
-                openP2PApp(username, port, password);
+            if (port == -1) {
+                showAlert("Error", "Unknown user or incorrect password.");
+                passwordField.clear();
+                return;
             }
-            else {
-                showAlert("Error", "Incorrect password.");
+            else if (port == -2) {
+                showAlert("Error", "An error occurred while trying to log in.");
+                System.exit(0);
+            }
+            else 
+            {
+                openP2PApp(username, port, password);
             }
         } catch (Exception e) {
             e.printStackTrace();
             showAlert("Error", "An error occurred while trying to log in.");
+            System.exit(0);
         }
     }
 
@@ -59,14 +67,23 @@ public class LoginController {
         String password = passwordField.getText().trim();
 
         if (userId.isEmpty() || password.isEmpty()) {
-            statusText.setText("User ID or Password cannot be empty!");
+            showAlert("Error", "User ID or Password cannot be empty!");
             return;
         }
 
-        if (userDatabase.registerUser(userId, password)) {
+        String res = userDatabase.registerUser(userId, password);
+
+        if (res.equals("OK")) {
             statusText.setText("Registration successful! Please login.");
+        } else if (res.equals("EXISTS")) {
+            showAlert("Error", "User already exists.");
+            usernameField.clear();
+            passwordField.clear();
+            return;
         } else {
-            statusText.setText("User already exists.");
+            showAlert("Error", "Error while registering");
+            System.exit(0);
+            return;
         }
     }
 

@@ -141,15 +141,20 @@ class ClientHandler implements Runnable {
                                 int port = (int) in.readObject();
                                 byte[] cert = (byte[]) in.readObject();
         
-                                saveUserInDatabase(user, hashedPassword, salt, ip, port, cert);
+                                String resReg = saveUserInDatabase(user, hashedPassword, salt, ip, port, cert);
+
+                                out.writeObject(resReg);
+                                out.flush();
                                 break;
         
                             case "LOGIN":
                                 String username = (String) in.readObject();
                                 String password = (String) in.readObject();
+
+                                String resLog = authenticateUser(username, password);
         
-                                if (authenticateUser(username, password) == true) {
-                                    out.writeObject(true);
+                                if (resLog.equals("OK")) {
+                                    out.writeObject("OK");
                                     out.flush();
         
                                     Connection conn = null;
@@ -184,8 +189,12 @@ class ClientHandler implements Runnable {
                                     } catch (Exception e){
                                         e.printStackTrace();
                                     }
+                                } else if (resLog.equals("WRONG")) {
+                                    out.writeObject("WRONG");
+                                    out.flush();
                                 } else {
-                                    out.writeObject(false);
+                                    out.writeObject("ERROR");
+                                    out.flush();
                                 }
         
                                 break;
@@ -207,8 +216,7 @@ class ClientHandler implements Runnable {
                                 break;
         
                             default:
-                                out.writeObject("Unknown command: " + clientMessage);
-                                out.flush();
+                                System.out.println("Unknown command: " + clientMessage);
         
                                 break;
                         }
@@ -236,29 +244,45 @@ class ClientHandler implements Runnable {
         return conn;
     }
 
-    private void saveUserInDatabase(String username, String hashedPassword, byte[] salt, String ip, int port, byte[] cert) {
+    private String saveUserInDatabase(String username, String hashedPassword, byte[] salt, String ip, int port, byte[] cert) {
         Connection conn = null;
         PreparedStatement stmt = null;
-
+        ResultSet rs = null;
+    
         try {
             conn = connect();
+            // Check if user already exists
+            String checkUserQuery = "SELECT COUNT(*) FROM peers WHERE username = ?";
+            stmt = conn.prepareStatement(checkUserQuery);
+            stmt.setString(1, username);
+            rs = stmt.executeQuery();
+    
+            if (rs.next() && rs.getInt(1) > 0) {
+                return "EXISTS";
+            }
+    
             String insertQuery = "INSERT INTO peers (username, password, salt, ip, port, cert) VALUES (?, ?, ?, ?, ?, ?)";
-            
+            stmt.close();
             stmt = conn.prepareStatement(insertQuery);
-
+    
             stmt.setString(1, username);
             stmt.setString(2, hashedPassword);
             stmt.setBytes(3, salt);
-            stmt.setString(4, ip); //Mesma maquina
+            stmt.setString(4, ip); // Same machine
             stmt.setInt(5, port);
             stmt.setBytes(6, cert);
-
+    
             stmt.executeUpdate();
+            return "OK";
         } catch (Exception e) {
             System.out.println("Error while updating peer information: " + e.getMessage());
             e.printStackTrace();
+            return "ERROR";
         } finally {
             try {
+                if (rs != null) {
+                    rs.close();
+                }
                 if (stmt != null) {
                     stmt.close();
                 }
@@ -271,7 +295,7 @@ class ClientHandler implements Runnable {
         }
     }
 
-    private boolean authenticateUser(String username, String password) {
+    private String authenticateUser(String username, String password) {
         Connection conn = null;
         PreparedStatement stmt = null;
 
@@ -288,11 +312,18 @@ class ClientHandler implements Runnable {
                     byte[] salt = rs.getBytes("salt");
                     String storedPassword = rs.getString("password");
 
-                    return EncryptionUtil.verifyPassword(password, storedPassword, salt);
+                    boolean res = EncryptionUtil.verifyPassword(password, storedPassword, salt);
+
+                    if (res) {
+                        return "OK";
+                    }
+                    else {
+                        return "WRONG";
+                    }
                 }
                 else 
                 {
-                    return false;
+                    return "WRONG";
                 }
             } finally {
                 try {
@@ -304,14 +335,13 @@ class ClientHandler implements Runnable {
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
-                    return false;
+                    return "ERROR";
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
+            return "ERROR";
         }
-
-        return false;
     }
 
     // Method to retrieve the port based on the username
