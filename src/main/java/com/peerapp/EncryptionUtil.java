@@ -12,7 +12,6 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Signature;
-import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.security.spec.KeySpec;
 import java.util.Base64;

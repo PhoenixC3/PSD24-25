@@ -15,6 +15,7 @@ public class SSLServer {
     private static final int PORT = 8080;
     private static final String DB_URL = "jdbc:sqlite:peers.db";
     private static Connection conn;
+    private static SSLServerSocket svSocket;
 
     private static final String CREATE_PEER_TABLE_SQL = 
         "CREATE TABLE IF NOT EXISTS peers (" +
@@ -53,12 +54,12 @@ public class SSLServer {
             // Load the keystore
             KeyStore keyStore = KeyStore.getInstance("JKS");
             try (FileInputStream keyStoreInput = new FileInputStream("keystores/server_keystore.jks")) {
-                keyStore.load(keyStoreInput, "serverpass".toCharArray()); // Provide keystore password
+                keyStore.load(keyStoreInput, "serverpass".toCharArray());
             }
 
             // Set up the KeyManagerFactory
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(keyStore, "serverpass".toCharArray()); // Provide key password
+            kmf.init(keyStore, "serverpass".toCharArray());
 
             // Set up the SSL context
             SSLContext sslContext = SSLContext.getInstance("TLS");
@@ -66,35 +67,52 @@ public class SSLServer {
 
             // Create an SSLServerSocketFactory and SSLServerSocket
             SSLServerSocketFactory sslServerSocketFactory = sslContext.getServerSocketFactory();
-            SSLServerSocket sslServerSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
+            svSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
 
-            // Enable all cipher suites
-            sslServerSocket.setEnabledCipherSuites(sslServerSocket.getSupportedCipherSuites());
-            System.out.println("SSL Server is listening on port " + PORT);
+            System.out.println("Server is listening on port: " + PORT);
 
-            // Accept connections in a loop
             while (true) {
-                SSLSocket sslSocket = (SSLSocket) sslServerSocket.accept();
-                System.out.println("Client connected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
-
-                // Handle the client connection in a separate thread
-                new ClientHandler(sslSocket).start();
+                try {
+                    SSLSocket socket = (SSLSocket) svSocket.accept();
+                    System.out.println("Client connected: " + socket.getInetAddress() + ":" + socket.getPort());
+                    new Thread(new ClientHandler(socket)).start();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            close();
         }
     }
 
-    public static Connection connect() throws SQLException {
+    private static Connection connect() throws SQLException {
         if (conn == null || conn.isClosed()) {
             conn = DriverManager.getConnection(DB_URL);
         }
         return conn;
     }
+
+    private static void close() {
+        try {
+            if (svSocket != null && !svSocket.isClosed()) {
+                svSocket.close();
+            }
+
+            if (conn != null && !conn.isClosed()) {
+                conn.close();
+            }
+        } catch (IOException e) {
+            System.err.println("Error closing SSL server socket: " + e.getMessage());
+        } catch (SQLException e) {
+            System.err.println("Error closing database connection: " + e.getMessage());
+        }
+    }
 }
 
 // ClientHandler class to handle client connections
-class ClientHandler extends Thread {
+class ClientHandler implements Runnable {
     private final SSLSocket sslSocket;
     private static final String DB_URL = "jdbc:sqlite:peers.db";
     private static Connection conn;
@@ -196,17 +214,18 @@ class ClientHandler extends Thread {
                         }
                     }
                 } catch (EOFException e) {
+                    // Client has disconnected
+                    System.out.println("Client disconnected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
                     break;
+                } catch (IOException e) {
+                    System.out.println("Client disconnected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
+                    break;
+                } catch (ClassNotFoundException e) {
+                    System.out.println("Client disconnected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
                 }
             }
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        } finally {
-            try {
-                sslSocket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        } catch (IOException e) {
+            System.out.println("Error in client handler: " + e.getMessage());
         }
     }
 
