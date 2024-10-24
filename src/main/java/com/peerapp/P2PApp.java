@@ -1,4 +1,4 @@
-package com.peerapp;
+	package com.peerapp;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;

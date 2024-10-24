@@ -12,24 +12,48 @@
     <padding>
         <Insets top="10" right="10" bottom="10" left="10"/>
     </padding>
-
-    <TextField fx:id="recipientField" 
-               promptText="Enter recipient ID"
-               maxWidth="200"/>
-
-    <ScrollPane fx:id="messagesArea" 
-                VBox.vgrow="ALWAYS"
-                style="-fx-background-color: transparent;">
-        <VBox fx:id="messagesVBox"/>
-    </ScrollPane>
-
-    <HBox spacing="10">
-        <TextField fx:id="messageField" 
-                  promptText="Enter message"
-                  HBox.hgrow="ALWAYS"/>
-        <Button fx:id="sendButton" 
-                text="Send"
-                style="-fx-background-color: #0084FF; -fx-text-fill: white;"/>
-    </HBox>
-
+	
+	<SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.3">
+		
+		<!-- Left side: Contacts/Chat History -->
+		<VBox spacing="10">	
+            <TextField fx:id="searchField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search contacts..."/>         
+                                  
+            <Button fx:id="startChatButton" layoutX="260" layoutY="10" text="Start Chat" />
+                      
+            <HBox spacing="5" alignment="CENTER_LEFT">
+            	<ProgressIndicator fx:id="searchProgress" 
+                        visible="false" 
+                        maxHeight="20" 
+                        maxWidth="20"/>
+            	<Label fx:id="searchStatusLabel" 
+                        visible="false" 
+                        wrapText="true"/>
+            </HBox>
+            
+            <ListView fx:id="contactsListView" 
+                     VBox.vgrow="ALWAYS"/>
+		</VBox>
+		
+		<!-- Right side: Chat Area -->
+	    <VBox spacing="10">
+	    	<Label fx:id="currentUserIdLabel" layoutX="50" layoutY="50" text="No conversation selected"/>
+	
+	   		<ScrollPane fx:id="messagesArea" 
+	                VBox.vgrow="ALWAYS"
+	                style="-fx-background-color: transparent;">
+	        	<VBox fx:id="messagesVBox"/>
+	    	</ScrollPane>
+	
+	    	<HBox spacing="10">
+	        	<TextField fx:id="messageField" 
+	                  promptText="Enter message"
+	                  HBox.hgrow="ALWAYS"/>
+	        	<Button fx:id="sendButton" layoutX="350" layoutY="350"
+	                text="Send"
+	                style="-fx-background-color: #0084FF; -fx-text-fill: white;"/>
+	    	</HBox>
+	    </VBox>
+	    
+	</SplitPane>
 </VBox>
