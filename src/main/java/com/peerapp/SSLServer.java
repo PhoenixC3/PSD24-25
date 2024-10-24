@@ -14,6 +14,7 @@ public class SSLServer {
 
     private static final int PORT = 8080;
     private static final String DB_URL = "jdbc:sqlite:peers.db";
+    private static final String MSG_DB_URL = "jdbc:sqlite:msgs.db";
     private static Connection conn;
     private static SSLServerSocket svSocket;
 
@@ -27,6 +28,12 @@ public class SSLServer {
         "port INTEGER NOT NULL, " +
         "cert BLOB NOT NULL);";
 
+    private static final String CREATE_MESSAGE_TABLE_SQL = 
+    "CREATE TABLE IF NOT EXISTS messages (" +
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+    "username TEXT NOT NULL UNIQUE, " +
+    "msgs BLOB NOT NULL);";
+
     public static void main(String[] args) {
         Connection conn = null;
         Statement stmt = null;
@@ -35,6 +42,21 @@ public class SSLServer {
             conn = connect();
             stmt = conn.createStatement();
             stmt.execute(CREATE_PEER_TABLE_SQL);
+
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+                if (conn != null) {
+                    conn.close();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            conn = connect();
+            stmt = conn.createStatement();
+            stmt.execute(CREATE_MESSAGE_TABLE_SQL);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -205,13 +227,21 @@ class ClientHandler implements Runnable {
                                 String peerIp = getPeerIp(peerUsername);
                                 int peerPort = getPeerPort(peerUsername);
                                 byte[] peerCert = getPeerCert(peerUsername);
-        
-                                out.writeObject(peerIp);
-                                out.flush();
-                                out.writeObject(peerPort);
-                                out.flush();
-                                out.writeObject(peerCert);
-                                out.flush();
+
+                                if (peerIp.equals("NOTFOUND") || peerPort == -1 || peerCert == null) {
+                                    out.writeObject("NOTFOUND");
+                                    out.flush();
+                                }
+                                else {
+                                    out.writeObject("OK");
+                                    out.flush();
+                                    out.writeObject(peerIp);
+                                    out.flush();
+                                    out.writeObject(peerPort);
+                                    out.flush();
+                                    out.writeObject(peerCert);
+                                    out.flush();
+                                }
         
                                 break;
         
@@ -364,6 +394,7 @@ class ClientHandler implements Runnable {
                 ip = rs.getString("ip");
             } else {
                 System.out.println("No peer found with the username: " + username);
+                return "NOTFOUND";
             }
 
         } catch (SQLException e) {
@@ -405,6 +436,7 @@ class ClientHandler implements Runnable {
                 port = rs.getInt("port");
             } else {
                 System.out.println("No peer found with the username: " + username);
+                return -1;
             }
 
         } catch (SQLException e) {
@@ -446,6 +478,7 @@ class ClientHandler implements Runnable {
                 cert = rs.getBytes("cert");
             } else {
                 System.out.println("No peer found with the username: " + username);
+                return null;
             }
 
         } catch (SQLException e) {
