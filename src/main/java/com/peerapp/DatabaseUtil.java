@@ -1,6 +1,7 @@
 package com.peerapp;
 
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -42,24 +43,36 @@ public class DatabaseUtil {
         try {
             socket = createClientSocket(username, password);
 
+            if (socket == null) {
+                return -1;
+            }
+
             oos = new ObjectOutputStream(socket.getOutputStream());
 
             oos.writeObject("LOGIN");
+            oos.flush();
             oos.writeObject(username);
+            oos.flush();
             oos.writeObject(password);
+            oos.flush();
 
             ois = new ObjectInputStream(socket.getInputStream());
+            String res = (String) ois.readObject();
 
-            if((boolean) ois.readObject() == true) {
+            if(res.equals("OK")) {
                 int port = (int) ois.readObject();
                 return port;
             }
-            else {
+            else if(res.equals("WRONG")) {
                 return -1;
             }
+            else 
+            {
+                return -2;
+            }   
         } catch (Exception e) {
             e.printStackTrace();
-            return -1;
+            return -3;
         } finally {
             try {
                 if (oos != null) oos.close();
@@ -71,11 +84,12 @@ public class DatabaseUtil {
         }
     }
 
-    public boolean registerUser(String username, String password) {
+    public String registerUser(String username, String password) {
         byte[] salt = EncryptionUtil.generateSalt();
         X509Certificate myCert = createKeystoreAndTruststore(username, password);
         SSLSocket socket = null;
         ObjectOutputStream oos = null;
+        ObjectInputStream ois = null;
 
         try {
             String hashedPassword = EncryptionUtil.hashPassword(password, salt);
@@ -85,6 +99,7 @@ public class DatabaseUtil {
             socket = createClientSocket(username, password);
 
             oos = new ObjectOutputStream(socket.getOutputStream());
+            ois = new ObjectInputStream(socket.getInputStream());
 
             oos.writeObject("REGISTER");
             oos.flush();
@@ -101,14 +116,16 @@ public class DatabaseUtil {
             oos.writeObject(certEnc);
             oos.flush();
 
-            return true;
+            String res = (String) ois.readObject();
+
+            return res;
         } catch (Exception e) {
-            System.out.println("Error while updating peer information: " + e.getMessage());
             e.printStackTrace();
-            return false;
+            return "ERROR";
         } finally {
             try {
                 if (oos != null) oos.close();
+                if (ois != null) ois.close();
                 if (socket != null) socket.close();
             } catch (IOException e) {
                 e.printStackTrace();
@@ -120,6 +137,8 @@ public class DatabaseUtil {
         KeyStore trustStore = KeyStore.getInstance("JKS");
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + username + "_truststore.jks")) {
             trustStore.load(trustStoreInput, password.toCharArray());
+        } catch (Exception e) {
+            return null;
         }
 
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
