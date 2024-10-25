@@ -12,6 +12,7 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 
@@ -30,18 +31,21 @@ public class PeerController {
     private Peer peer;
     private ObservableList<String> connectedPeers = FXCollections.observableArrayList();
     private FilteredList<String> filteredPeers;
-    private Map<String, List<Message>> encryptedMessageCache = new HashMap<>();
+    private Map<String, List<ChatMessage>> messageHistory = new HashMap<>();
+    private Map<String, Integer> unreadMessageCounts = new HashMap<>();
     private String activeConversationId;
 
     public void initialize(String userId, int port, String password) {
         try {
-            // Start peer
             peer = new Peer(userId, password, port, this);
 
             configureMessageArea();
             initializeContactsList();
             initializeSearch();
             configureMessageHandling();
+
+            currentUserIdLabel.setText("Your ID: " + userId);
+
         } catch (Exception e) {
             e.printStackTrace();
             showError("Failed to initialize: " + e.getMessage());
@@ -58,24 +62,27 @@ public class PeerController {
         
         messagesVBox.heightProperty().addListener((observable, oldValue, newValue) -> 
             messagesArea.setVvalue(1.0));
+
+        messageField.setOnAction(event -> sendMessage());
     }
     
     private void initializeContactsList() {
         filteredPeers = new FilteredList<>(connectedPeers);
-        filteredPeers.remove(peer.getUserId());
         contactsListView.setItems(filteredPeers);
         
         contactsListView.getSelectionModel().selectedItemProperty().addListener(
             (observable, oldValue, newValue) -> {
                 if (newValue != null) {
                     startConversationWithPeer(newValue);
+                    unreadMessageCounts.put(newValue, 0);
+                    refreshContactsList();
                 }
             }
         );
         
         contactsListView.setCellFactory(lv -> new ListCell<String>() {
             @Override
-            protected void updateItem(String peerId, boolean empty) {
+        /*     protected void updateItem(String peerId, boolean empty) {
                 super.updateItem(peerId, empty);
                 if (empty || peerId == null) {
                     setText(null);
@@ -85,14 +92,41 @@ public class PeerController {
                     Label peerLabel = new Label(peerId);
                     Label messageCount = new Label();
                     
-                    List<Message> messages = encryptedMessageCache.get(peerId);
+                    List<MessageBubble> messages = messageHistory.get(peerId);
                     if (messages != null && !messages.isEmpty()) {
                         messageCount.setText(String.valueOf(messages.size()));
                         messageCount.setStyle("-fx-background-color: #0084FF; -fx-text-fill: white; " +
-                                           "-fx-padding: 2 6; -fx-background-radius: 10;");
+                                            "-fx-padding: 2 6; -fx-background-radius: 10;");
                     }
                     
                     container.getChildren().addAll(peerLabel, messageCount);
+                    setGraphic(container);
+                }
+            } */
+            protected void updateItem(String peerId, boolean empty) {
+                super.updateItem(peerId, empty);
+                if (empty || peerId == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    HBox container = new HBox(10);
+                    container.setAlignment(Pos.CENTER_LEFT);
+                    
+                    Label peerLabel = new Label(peerId);
+                    container.getChildren().add(peerLabel);
+                    
+                    Integer unreadCount = unreadMessageCounts.getOrDefault(peerId, 0);
+                    if (unreadCount > 0) {
+                        Label badge = new Label(String.valueOf(unreadCount));
+                        badge.setStyle(
+                            "-fx-background-color: #0084FF;" +
+                            "-fx-text-fill: white;" +
+                            "-fx-padding: 2 6;" +
+                            "-fx-background-radius: 10;"
+                        );
+                        container.getChildren().add(badge);
+                    }
+                    
                     setGraphic(container);
                 }
             }
@@ -103,9 +137,7 @@ public class PeerController {
         searchProgress.setVisible(false);
         searchStatusLabel.setVisible(false);
         
-        searchButton.setOnAction(event -> {
-            performSearch();
-        });
+        searchButton.setOnAction(event -> performSearch());
     }
     
     private void performSearch() {
@@ -117,15 +149,21 @@ public class PeerController {
             searchStatusLabel.setVisible(true);
             
             peer.getPeerInfo(searchText);
-        } else {
-            searchProgress.setVisible(false);
-            searchStatusLabel.setVisible(false);
         }
     }
     
     private void startConversationWithPeer(String peerId) {
     	activeConversationId = peerId;
     	currentUserIdLabel.setText("Chatting with: " + peerId);
+
+        messagesVBox.getChildren().clear();
+
+        List<ChatMessage> peerMessages = messageHistory.get(peerId);
+        if (peerMessages != null) {
+            for (ChatMessage msg : peerMessages) {
+                displayMessageBubble(msg.sender, msg.content, msg.isSent);
+            }
+        }
     }
     
     private void configureMessageHandling() {
@@ -140,7 +178,6 @@ public class PeerController {
                     searchProgress.setVisible(false);
                     searchStatusLabel.setText("Found peer: " + peerId);
                 }
-                contactsListView.refresh();
             });
         }
     }
@@ -154,15 +191,19 @@ public class PeerController {
         }
         
         if (!message.isEmpty()) {
-        	boolean res = peer.sendMessage(activeConversationId, message);
+        	boolean sent = peer.sendMessage(activeConversationId, message);
         	
-            if (res) {
-                addMessageBubble("You", message, true);
+            if (sent) {
+                messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
+                            .add(new ChatMessage(peer.getUserId(), message, true));
+                
+                displayMessageBubble(peer.getUserId(), message, true);
+                  
                 messageField.clear();
                 updatePeerList(activeConversationId);
             } 
             else {
-                addMessageBubble("You", "User does not exist", false);
+                addErrorMessage("Failed to send message: User does not exist");
                 messageField.clear();
             }
         } else {
@@ -170,13 +211,13 @@ public class PeerController {
         }
     }
 
-    private void addMessageBubble(String sender, String message, boolean isSent) {
+    private void displayMessageBubble(String senderId, String content, boolean isSent) {
         HBox messageContainer = new HBox(10);
         messageContainer.setPadding(new Insets(5));
         
         TextFlow bubble = new TextFlow();
-        Text senderText = new Text(sender + ": ");
-        Text messageText = new Text(message);
+        Text senderText = new Text(isSent ? "You: " : senderId + ": ");
+        Text messageText = new Text(content);
         
         bubble.getChildren().addAll(senderText, messageText);
         bubble.setPadding(new Insets(8));
@@ -184,7 +225,11 @@ public class PeerController {
                 isSent ? "#0084FF" : "#E9ECEF"));
         
         if (isSent) {
-            messageContainer.setStyle("-fx-alignment: center-right;");
+            messageContainer.setAlignment(Pos.CENTER_RIGHT);
+            senderText.setStyle("-fx-fill: white;");
+            messageText.setStyle("-fx-fill: white;");
+        } else {
+            messageContainer.setAlignment(Pos.CENTER_LEFT);
         }
         
         messageContainer.getChildren().add(bubble);
@@ -193,8 +238,26 @@ public class PeerController {
         messagesVBox.getChildren().add(messageContainer);
     }
 
-    public void appendReceivedMessage(String sender, String message) {
-        Platform.runLater(() -> addMessageBubble(sender, message, false));
+    public void appendReceivedMessage(String sender, String content) {
+        Platform.runLater(() -> {
+            messageHistory.computeIfAbsent(sender, k -> new ArrayList<>())
+                        .add(new ChatMessage(sender, content, false));
+
+            if (!connectedPeers.contains(sender)) {
+                connectedPeers.add(sender);
+            }
+
+            if (activeConversationId != null && activeConversationId.equals(sender)) {
+                displayMessageBubble(sender, content, false);
+            } else {
+                unreadMessageCounts.merge(sender, 1, Integer::sum);
+                refreshContactsList();
+            }
+        });
+    }
+
+    private void refreshContactsList() {
+        contactsListView.refresh();
     }
 
     public void appendError(String error) {
