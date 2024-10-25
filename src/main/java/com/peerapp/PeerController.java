@@ -1,7 +1,9 @@
 package com.peerapp;
 
+import java.net.BindException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import javafx.application.Platform;
@@ -10,6 +12,7 @@ import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.layout.*;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -32,8 +35,9 @@ public class PeerController {
     private ObservableList<String> connectedPeers = FXCollections.observableArrayList();
     private FilteredList<String> filteredPeers;
     private Map<String, List<ChatMessage>> messageHistory = new HashMap<>();
-    private Map<String, Integer> unreadMessageCounts = new HashMap<>();
+    private Map<String, Integer> unreadMessageCounts = new HashMap<String, Integer>();
     private String activeConversationId;
+    private HashMap<String, LinkedList<String>> convs = new HashMap<String, LinkedList<String>>();
 
     public void initialize(String userId, int port, String password) {
         try {
@@ -46,7 +50,11 @@ public class PeerController {
 
             currentUserIdLabel.setText("Your ID: " + userId);
 
-        } catch (Exception e) {
+        } catch (BindException e) {
+            showAlert("Error", "Logged in from another location.");
+            System.exit(0);
+        }
+        catch (Exception e) {
             e.printStackTrace();
             showError("Failed to initialize: " + e.getMessage());
         }
@@ -139,6 +147,26 @@ public class PeerController {
         
         searchButton.setOnAction(event -> performSearch());
     }
+
+    private LinkedList<String> getConversationMessages(String recipient) {
+        return convs.get(recipient);
+    }
+
+    private void addMessageToConv(String message, String recipient) {
+        LinkedList<String> list = convs.get(recipient);
+
+        if (list == null) {
+            list = new LinkedList<String>();
+
+            list.add(message);
+            convs.put(recipient, list);
+        }
+        else 
+        {
+            list.add(message);
+            convs.put(recipient, list);
+        }
+    }
     
     private void performSearch() {
         String searchText = searchField.getText().trim();
@@ -153,6 +181,24 @@ public class PeerController {
     }
     
     private void startConversationWithPeer(String peerId) {
+        LinkedList<String> conv = getConversationMessages(peerId);
+
+        if (conv != null) {
+            for (String msg : conv) {
+                if (msg.startsWith("Me: ")) {
+                    String actualMsg = msg.substring(4);
+    
+                    displayMessageBubble(peer.getUserId(), actualMsg, true);
+                }
+                else
+                {
+                    String actualMsg = msg.substring(7);
+    
+                    displayMessageBubble(peerId, actualMsg, false);
+                }
+            }
+        }
+
     	activeConversationId = peerId;
     	currentUserIdLabel.setText("Chatting with: " + peerId);
 
@@ -201,6 +247,8 @@ public class PeerController {
                   
                 messageField.clear();
                 updatePeerList(activeConversationId);
+
+                addMessageToConv("Me: " + message, activeConversationId);
             } 
             else {
                 addErrorMessage("Failed to send message: User does not exist");
@@ -248,6 +296,7 @@ public class PeerController {
             }
 
             if (activeConversationId != null && activeConversationId.equals(sender)) {
+                addMessageToConv("Other: " + content, sender);
                 displayMessageBubble(sender, content, false);
             } else {
                 unreadMessageCounts.merge(sender, 1, Integer::sum);
@@ -277,5 +326,12 @@ public class PeerController {
             searchStatusLabel.setStyle("-fx-text-fill: red;");
             searchStatusLabel.setVisible(true);
         });
+    }
+
+    private void showAlert(String title, String message) {
+        Alert alert = new Alert(AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setContentText(message);
+        alert.showAndWait();
     }
 }

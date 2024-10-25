@@ -2,8 +2,6 @@ com\peerapp\PeerController.class
 com\peerapp\Peer$MessageHandler.class
 com\peerapp\Peer.class
 com\peerapp\DatabaseUtil.class
-com\peerapp\login.fxml
-com\peerapp\peer.fxml
 com\peerapp\Message.class
 com\peerapp\ClientHandler.class
 com\peerapp\EncryptionUtil.class
