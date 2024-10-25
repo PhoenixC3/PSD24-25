@@ -10,6 +10,8 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
+import java.util.LinkedList;
 
 import javax.crypto.SecretKey;
 
@@ -345,5 +347,45 @@ public class Peer {
                 e.printStackTrace();
             }
         }
-    }   
+    }
+
+    public void saveMessageHistory(HashMap<String, LinkedList<String>> convs) {
+        try {
+
+            oosServer.writeObject("SAVEMSGS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            oosServer.writeObject(convs);
+            oosServer.flush();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    public HashMap<String, LinkedList<String>> loadMessageHistory() {
+        try {
+
+            oosServer.writeObject("LOADMSGS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            String res = (String) oisServer.readObject();
+
+            if (res.equals("OK")) {
+                HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) oisServer.readObject();
+                return convs;
+            }
+
+            return null;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    } 
 }

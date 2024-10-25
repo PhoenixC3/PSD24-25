@@ -4,7 +4,10 @@ import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
+import javafx.stage.WindowEvent;
 
 public class P2PApp extends Application {
 
@@ -30,7 +33,8 @@ public class P2PApp extends Application {
         loginStage.show();
 
         loginStage.setOnCloseRequest(event -> {
-            System.exit(0);
+            event.consume();
+            exitConfirmation(event);
         });
     }
 
@@ -46,7 +50,22 @@ public class P2PApp extends Application {
         appStage.show();
 
         appStage.setOnCloseRequest(event -> {
-            System.exit(0);
+            event.consume();
+            controller.saveMessages();
+            exitConfirmation(event);
+        });
+    }
+
+    private void exitConfirmation(WindowEvent event) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Exit Confirmation");
+        alert.setHeaderText(null);
+        alert.setContentText("Are you sure you want to exit?");
+
+        alert.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                System.exit(0);
+            }
         });
     }
 

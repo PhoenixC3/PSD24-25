@@ -9,13 +9,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
 import java.util.LinkedList;
 
 public class SSLServer {
 
     private static final int PORT = 8080;
     private static final String DB_URL = "jdbc:sqlite:peers.db";
-    private static final String MSG_DB_URL = "jdbc:sqlite:msgs.db";
     private static Connection conn;
     private static SSLServerSocket svSocket;
 
@@ -244,6 +244,108 @@ class ClientHandler implements Runnable {
                                     out.flush();
                                 }
         
+                                break;
+
+                            case "SAVEMSGS":
+                                String peerId = (String) in.readObject();
+                                HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) in.readObject();
+                                byte[] map = null;
+
+                                try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                    ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                    outMap.writeObject(convs);
+                                    map = byteOut.toByteArray();
+                                }
+
+                                Connection conn = null;
+                                PreparedStatement stmt = null;
+                                String insertQuery = "INSERT OR REPLACE INTO messages (username, msgs) VALUES (?, ?)";
+
+                                try {
+                                    conn = connect();
+                                    stmt = conn.prepareStatement(insertQuery);
+    
+                                    stmt.setString(1, peerId);
+                                    stmt.setBytes(2, map);
+                            
+                                    stmt.executeUpdate();
+
+                                    System.out.println("Messages saved.");
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmt != null) {
+                                            stmt.close();
+                                        }
+                                        if (conn != null) {
+                                            conn.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+        
+                                break;
+                            case "LOADMSGS":
+                                String peerLoad = (String) in.readObject();
+                                byte[] mapLoad = null;
+                            
+                                Connection connLoad = null;
+                                PreparedStatement stmtLoad = null;
+                                ResultSet rs = null;
+                                String selectQuery = "SELECT msgs FROM messages WHERE username = ?";
+                            
+                                try {
+                                    connLoad = connect();
+                                    stmtLoad = connLoad.prepareStatement(selectQuery);
+                                    stmtLoad.setString(1, peerLoad);
+                                    rs = stmtLoad.executeQuery();
+                            
+                                    if (rs.next()) {
+                                        mapLoad = rs.getBytes("msgs");
+                            
+                                        // Deserialize the byte array back to HashMap
+                                        HashMap<String, LinkedList<String>> convsLoad;
+
+                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapLoad);
+                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
+                            
+                                            convsLoad = (HashMap<String, LinkedList<String>>) inMap.readObject();
+
+                                            out.writeObject("OK");
+                                            out.flush();
+
+                                            out.writeObject(convsLoad);
+                                            out.flush();
+                                        }
+                                    } else {
+                                        out.writeObject("NOK");
+                                        out.flush();
+
+                                        System.out.println("No messages found for user: " + peerLoad);
+                                    }
+                            
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rs != null) {
+                                            rs.close();
+                                        }
+                                        if (stmtLoad != null) {
+                                            stmtLoad.close();
+                                        }
+                                        if (connLoad != null) {
+                                            connLoad.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                            
                                 break;
         
                             default:

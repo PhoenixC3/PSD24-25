@@ -47,6 +47,7 @@ public class PeerController {
             initializeContactsList();
             initializeSearch();
             configureMessageHandling();
+            getMessages();
 
             currentUserIdLabel.setText("Your ID: " + userId);
 
@@ -60,6 +61,14 @@ public class PeerController {
         }
     }
     
+    private void getMessages() {
+        HashMap<String, LinkedList<String>> convsGet = peer.loadMessageHistory();
+
+        if (convsGet != null) {
+            this.convs = convsGet;
+        }
+    }
+
     private void configureMessageArea() {
         messagesArea.setFitToWidth(true);
         messagesArea.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
@@ -181,6 +190,11 @@ public class PeerController {
     }
     
     private void startConversationWithPeer(String peerId) {
+        activeConversationId = peerId;
+    	currentUserIdLabel.setText("Chatting with: " + peerId);
+
+        messagesVBox.getChildren().clear();
+
         LinkedList<String> conv = getConversationMessages(peerId);
 
         if (conv != null) {
@@ -198,11 +212,6 @@ public class PeerController {
                 }
             }
         }
-
-    	activeConversationId = peerId;
-    	currentUserIdLabel.setText("Chatting with: " + peerId);
-
-        messagesVBox.getChildren().clear();
 
         List<ChatMessage> peerMessages = messageHistory.get(peerId);
         if (peerMessages != null) {
@@ -333,5 +342,9 @@ public class PeerController {
         alert.setTitle(title);
         alert.setContentText(message);
         alert.showAndWait();
+    }
+
+    public void saveMessages() {
+        peer.saveMessageHistory(convs);
     }
 }
