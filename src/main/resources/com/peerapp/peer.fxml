@@ -17,9 +17,9 @@
 		
 		<!-- Left side: Contacts/Chat History -->
 		<VBox spacing="10">	
-            <TextField fx:id="searchField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search contacts..."/>         
-                                  
-            <Button fx:id="startChatButton" layoutX="260" layoutY="10" text="Start Chat" />
+            <TextField fx:id="searchField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search contacts..."/>
+
+			<Button fx:id="searchButton" text="Search" layoutX="50" layoutY="20"/>
                       
             <HBox spacing="5" alignment="CENTER_LEFT">
             	<ProgressIndicator fx:id="searchProgress" 
