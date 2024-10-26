@@ -519,7 +519,7 @@ class ClientHandler implements Runnable {
         return ip;
     }
 
-    // Method to retrieve the port based on the username
+    // Method to retrieve the ip:port based on the username
     private static int getPeerPort(String username) {
         String selectQuery = "SELECT port FROM peers WHERE username = ?";
         int port = -1;
@@ -561,7 +561,7 @@ class ClientHandler implements Runnable {
         return port;
     }
 
-    // Method to retrieve the port based on the username
+    // Method to retrieve the certificate based on the username
     private static byte[] getPeerCert(String username) {
         String selectQuery = "SELECT cert FROM peers WHERE username = ?";
         byte[] cert = null;

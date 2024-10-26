@@ -133,6 +133,7 @@ public class DatabaseUtil {
         }
     }
 
+    /* Create an SSLSocket for a client if the username and password is correct */
     private SSLSocket createClientSocket(String username, String password) throws Exception {
         KeyStore trustStore = KeyStore.getInstance("JKS");
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + username + "_truststore.jks")) {
@@ -152,6 +153,7 @@ public class DatabaseUtil {
         return (SSLSocket) sslSocketFactory.createSocket("127.0.0.1", 8080);
     }
 
+    /* Returns a random available port between MIN_PORT and MAX_PORT */
     private int findAvailableRandomPort() {
         Random random = new Random();
         int port;
@@ -172,6 +174,7 @@ public class DatabaseUtil {
         return port;
     }
 
+    /* Creates a keystore and truststore for a client using it's username and password */
     private X509Certificate createKeystoreAndTruststore(String username, String password) {
         try {
             //Create keypair
