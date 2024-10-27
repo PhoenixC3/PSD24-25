@@ -22,3 +22,5 @@ Enviar e receber mensagens funcional
 Mexer na interface
 
 Mensagens integrity a ser checked, encrypts e decrypts ta fixe
+
+Para bloquear SQL injection no login foram usados PreparedStatements

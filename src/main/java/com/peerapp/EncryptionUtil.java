@@ -17,6 +17,7 @@ import java.security.spec.KeySpec;
 import java.util.Base64;
 
 public class EncryptionUtil {
+    //Generate an AES secret key to share
     public static SecretKey generateSecretKey() {
         try {
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
@@ -104,14 +105,14 @@ public class EncryptionUtil {
             trustStore.load(trustStoreStream, trustStorePassword.toCharArray());
         }
 
-        // Get the certificate using the alias
+        //Get the certificate using the alias
         X509Certificate certificate = (X509Certificate) trustStore.getCertificate(alias);
         
         if (certificate == null) {
             throw new Exception("Certificate not found for alias: " + alias);
         }
 
-        // Extract the public key from the certificate
+        //Extract the public key from the certificate
         PublicKey publicKey = certificate.getPublicKey();
         return publicKey;
     }

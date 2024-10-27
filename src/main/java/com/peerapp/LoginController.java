@@ -25,21 +25,25 @@ public class LoginController {
 
     @FXML
     public void initialize() {
+        //Set the buttons' onclick to the respective functions
         loginButton.setOnAction(event -> login());
         registerButton.setOnAction(event -> handleRegister());
     }
 
     @FXML
     private void login() {
+        //Get user input parameters (SQL protected)
         String username = usernameField.getText();
         String password = passwordField.getText();
         
+        //Fill both fields please :3
         if (username.isEmpty() || password.isEmpty()) {
             showAlert("Error", "Both fields must be filled.");
             return;
         }
 
         try {
+            //Handle the login in database
             int port = userDatabase.authenticateUser(username, password);
             
             if (port == -1) {
@@ -63,6 +67,7 @@ public class LoginController {
     }
 
     private void handleRegister() {
+        //Get user input parameters (SQL protected)
         String userId = usernameField.getText().trim();
         String password = passwordField.getText().trim();
 
@@ -71,6 +76,7 @@ public class LoginController {
             return;
         }
 
+        //Handle the register in database
         String res = userDatabase.registerUser(userId, password);
 
         if (res.equals("OK")) {
@@ -79,10 +85,12 @@ public class LoginController {
             showAlert("Error", "User already exists.");
             usernameField.clear();
             passwordField.clear();
+
             return;
         } else {
             showAlert("Error", "Error while registering");
             System.exit(0);
+
             return;
         }
     }
@@ -92,7 +100,7 @@ public class LoginController {
         Stage stage = (Stage) loginButton.getScene().getWindow();
         stage.close();
 
-        // Open the P2P messaging app
+        //Set the system parameters to be used by the app after login
         System.setProperty("userId", userId);
         System.setProperty("userPort", Integer.toString(port));
         System.setProperty("userPassword", password);

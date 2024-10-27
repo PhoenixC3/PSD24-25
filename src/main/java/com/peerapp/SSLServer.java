@@ -33,7 +33,8 @@ public class SSLServer {
     "CREATE TABLE IF NOT EXISTS messages (" +
     "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
     "username TEXT NOT NULL UNIQUE, " +
-    "msgs BLOB NOT NULL);";
+    "msgs BLOB NOT NULL, " +
+    "unread BLOB NOT NULL);";
 
     public static void main(String[] args) {
         Connection conn = null;
@@ -171,9 +172,11 @@ class ClientHandler implements Runnable {
 
                                 Connection connReg = null;
                                 PreparedStatement stmtReg = null;
-                                String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs) VALUES (?, ?)";
+                                String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
                                 HashMap<String, LinkedList<String>> convsReg = new HashMap<String, LinkedList<String>>();
+                                HashMap<String, Integer> unreadReg = new HashMap<String, Integer>();
                                 byte[] mapReg = null;
+                                byte[] mapUnreadReg = null;
 
                                 try {
                                     connReg = connect();
@@ -185,9 +188,17 @@ class ClientHandler implements Runnable {
                                         outMap.writeObject(convsReg);
                                         mapReg = byteOut.toByteArray();
                                     }
+
+                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                        outMap.writeObject(unreadReg);
+                                        mapUnreadReg = byteOut.toByteArray();
+                                    }
     
                                     stmtReg.setString(1, user);
                                     stmtReg.setBytes(2, mapReg);
+                                    stmtReg.setBytes(3, mapUnreadReg);
                             
                                     stmtReg.executeUpdate();
 
@@ -288,7 +299,9 @@ class ClientHandler implements Runnable {
                             case "SAVEMSGS":
                                 String peerId = (String) in.readObject();
                                 HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) in.readObject();
+                                HashMap<String, Integer> unreadSave = (HashMap<String, Integer>) in.readObject();
                                 byte[] map = null;
+                                byte[] mapUnread = null;
 
                                 try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
                                     ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
@@ -297,9 +310,16 @@ class ClientHandler implements Runnable {
                                     map = byteOut.toByteArray();
                                 }
 
+                                try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                    ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                    outMap.writeObject(unreadSave);
+                                    mapUnread = byteOut.toByteArray();
+                                }
+
                                 Connection conn = null;
                                 PreparedStatement stmt = null;
-                                String insertQuery = "INSERT OR REPLACE INTO messages (username, msgs) VALUES (?, ?)";
+                                String insertQuery = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
 
                                 try {
                                     conn = connect();
@@ -307,6 +327,7 @@ class ClientHandler implements Runnable {
     
                                     stmt.setString(1, peerId);
                                     stmt.setBytes(2, map);
+                                    stmt.setBytes(3, mapUnread);
                             
                                     stmt.executeUpdate();
 
@@ -331,14 +352,16 @@ class ClientHandler implements Runnable {
                             case "LOADMSGS":
                                 String peerLoad = (String) in.readObject();
                                 byte[] mapLoad = null;
+                                byte[] mapUnreadLoad = null;
                             
                                 Connection connLoad = null;
                                 PreparedStatement stmtLoad = null;
                                 ResultSet rs = null;
-                                String selectQuery = "SELECT msgs FROM messages WHERE username = ?";
+                                String selectQuery = "SELECT msgs, unread FROM messages WHERE username = ?";
 
                                 // Deserialize the byte array back to HashMap
                                 HashMap<String, LinkedList<String>> convsLoad = new HashMap<String, LinkedList<String>>();
+                                HashMap<String, Integer> unreadLoad = new HashMap<String, Integer>();
                             
                                 try {
                                     connLoad = connect();
@@ -348,6 +371,7 @@ class ClientHandler implements Runnable {
                             
                                     if (rs.next()) {
                                         mapLoad = rs.getBytes("msgs");
+                                        mapUnreadLoad = rs.getBytes("unread");
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapLoad);
                                                 ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
@@ -358,6 +382,15 @@ class ClientHandler implements Runnable {
                                             out.flush();
 
                                             out.writeObject(convsLoad);
+                                            out.flush();
+                                        }
+
+                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapUnreadLoad);
+                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
+                            
+                                            unreadLoad = (HashMap<String, Integer>) inMap.readObject();
+
+                                            out.writeObject(unreadLoad);
                                             out.flush();
                                         }
                                     } else {
@@ -392,13 +425,18 @@ class ClientHandler implements Runnable {
 
                                 // Get the messages map of recipient
                                 byte[] mapOff = null;
+
+                                // Get the unread count map of recipient
+                                byte[] unreadMapOff = null;
                             
                                 Connection connOff = null;
                                 PreparedStatement stmtOff = null;
                                 ResultSet rsOff = null;
-                                String selectQueryOff = "SELECT msgs FROM messages WHERE username = ?";
+                                String selectQueryOff = "SELECT msgs, unread FROM messages WHERE username = ?";
                                 HashMap<String, LinkedList<Message>> convsOff = null;
                                 LinkedList<Message> myMsgs = null;
+
+                                HashMap<String, Integer> unreadOff = null;
                             
                                 try {
                                     connOff = connect();
@@ -427,14 +465,30 @@ class ClientHandler implements Runnable {
                                         }
 
                                         convsOff.put(msg.getSender(), myMsgs);
+
+                                        //
+
+                                        unreadMapOff = rsOff.getBytes("unread");
+
+                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(unreadMapOff);
+                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
+                            
+                                            unreadOff = (HashMap<String, Integer>) inMap.readObject();
+                                        }
+
+                                        int count = unreadOff.get(msg.getSender());
+
+                                        unreadOff.put(msg.getSender(), count + 1);
                                     }
                                     else 
                                     {
                                         convsOff = new HashMap<String, LinkedList<Message>>();
                                         myMsgs = new LinkedList<Message>();
+                                        unreadOff = new HashMap<String, Integer>();
 
                                         myMsgs.add(msg);
                                         convsOff.put(msg.getSender(), myMsgs);
+                                        unreadOff.put(msg.getSender(), 1);
                                     }
                             
                                 } catch (Exception e) {
@@ -455,7 +509,7 @@ class ClientHandler implements Runnable {
                                     }
                                 }
 
-                                String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs) VALUES (?, ?)";
+                                String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
 
                                 try {
                                     byte[] mapInsert = null;
@@ -467,11 +521,21 @@ class ClientHandler implements Runnable {
                                         mapInsert = byteOut.toByteArray();
                                     }
 
+                                    byte[] unreadInsert = null;
+
+                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                        outMap.writeObject(unreadOff);
+                                        unreadInsert = byteOut.toByteArray();
+                                    }
+
                                     connOff = connect();
                                     stmtOff = connOff.prepareStatement(insertQueryOff);
 
                                     stmtOff.setString(1, "offline:" + msg.getRecipient());
                                     stmtOff.setBytes(2, mapInsert);
+                                    stmtOff.setBytes(3, unreadInsert);
                             
                                     stmtOff.executeUpdate();
 
@@ -500,11 +564,12 @@ class ClientHandler implements Runnable {
                             case "LOADOFFLINE":
                                 String peerLoadOff = (String) in.readObject();
                                 byte[] getMapLoadOff = null;
+                                byte[] getUnreadLoadOff = null;
                             
                                 Connection connLoadOff = null;
                                 PreparedStatement stmtLoadOff = null;
                                 ResultSet rsLoadOff = null;
-                                String selectQueryLoadOff = "SELECT msgs FROM messages WHERE username = ?";
+                                String selectQueryLoadOff = "SELECT msgs, unread FROM messages WHERE username = ?";
                             
                                 try {
                                     connLoadOff = connect();
@@ -527,6 +592,20 @@ class ClientHandler implements Runnable {
                                             out.flush();
 
                                             out.writeObject(convsLoadOff);
+                                            out.flush();
+                                        }
+
+                                        getUnreadLoadOff = rsLoadOff.getBytes("unread");
+                            
+                                        // Deserialize the byte array back to HashMap
+                                        HashMap<String, Integer> unreadLoadOff;
+
+                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(getUnreadLoadOff);
+                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
+                            
+                                            unreadLoadOff = (HashMap<String, Integer>) inMap.readObject();
+
+                                            out.writeObject(unreadLoadOff);
                                             out.flush();
                                         }
                                     } else {

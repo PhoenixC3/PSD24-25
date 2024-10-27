@@ -1,7 +1,6 @@
 package com.peerapp;
 
 import java.net.BindException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -35,15 +34,28 @@ public class PeerController {
     @FXML private Button searchButton;
 
     private Peer peer;
+
+    //Peers that have already sent messages
     private ObservableList<String> connectedPeers = FXCollections.observableArrayList();
+
+    //Peers after search
     private FilteredList<String> filteredPeers;
+
+    //To use when unread messages
     private Map<String, List<ChatMessage>> messageHistory = new HashMap<>();
-    private Map<String, Integer> unreadMessageCounts = new HashMap<String, Integer>();
+
+    //To create the bubble for unread messages
+    private HashMap<String, Integer> unreadMessageCounts = new HashMap<String, Integer>();
+
+    //User that we are currently chatting with
     private String activeConversationId;
+
+    //Message history
     private HashMap<String, LinkedList<String>> convs = new HashMap<String, LinkedList<String>>();
 
     public void initialize(String userId, int port, String password) {
         try {
+            //Create peer object
             peer = new Peer(userId, password, port, this);
 
             configureMessageArea();
@@ -51,6 +63,7 @@ public class PeerController {
             initializeSearch();
             configureMessageHandling();
             getMessages();
+            getMessageCounts();
 
             currentUserIdLabel.setText("Your ID: " + userId);
 
@@ -63,7 +76,8 @@ public class PeerController {
             showError("Failed to initialize: " + e.getMessage());
         }
     }
-    
+
+    //Get message history (persistent)
     private void getMessages() {
         HashMap<String, LinkedList<String>> convsGet = peer.loadMessageHistory();
 
@@ -72,6 +86,11 @@ public class PeerController {
         }
     }
 
+    private void getMessageCounts() {
+        unreadMessageCounts = peer.getMessageCounts();
+    }
+
+    //Visual specs and send message button configuration
     private void configureMessageArea() {
         messagesArea.setFitToWidth(true);
         messagesArea.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
@@ -86,43 +105,28 @@ public class PeerController {
         messageField.setOnAction(event -> sendMessage());
     }
     
+    //Configure contacts list
     private void initializeContactsList() {
+        //Already connected peers appear on the left side
         filteredPeers = new FilteredList<>(connectedPeers);
         contactsListView.setItems(filteredPeers);
         
+        //On clicking another user's name we start the conversation
         contactsListView.getSelectionModel().selectedItemProperty().addListener(
             (observable, oldValue, newValue) -> {
                 if (newValue != null) {
                     startConversationWithPeer(newValue);
+
+                    //Reset the unread message count
                     unreadMessageCounts.put(newValue, 0);
                     refreshContactsList();
                 }
             }
         );
         
+        //Visual updating stuff
         contactsListView.setCellFactory(lv -> new ListCell<String>() {
             @Override
-        /*     protected void updateItem(String peerId, boolean empty) {
-                super.updateItem(peerId, empty);
-                if (empty || peerId == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    HBox container = new HBox(10);
-                    Label peerLabel = new Label(peerId);
-                    Label messageCount = new Label();
-                    
-                    List<MessageBubble> messages = messageHistory.get(peerId);
-                    if (messages != null && !messages.isEmpty()) {
-                        messageCount.setText(String.valueOf(messages.size()));
-                        messageCount.setStyle("-fx-background-color: #0084FF; -fx-text-fill: white; " +
-                                            "-fx-padding: 2 6; -fx-background-radius: 10;");
-                    }
-                    
-                    container.getChildren().addAll(peerLabel, messageCount);
-                    setGraphic(container);
-                }
-            } */
             protected void updateItem(String peerId, boolean empty) {
                 super.updateItem(peerId, empty);
                 if (empty || peerId == null) {
@@ -153,6 +157,7 @@ public class PeerController {
         });
     }
     
+    //Configure search button
     private void initializeSearch() {
         searchProgress.setVisible(false);
         searchStatusLabel.setVisible(false);
@@ -160,10 +165,12 @@ public class PeerController {
         searchButton.setOnAction(event -> performSearch());
     }
 
+    //Get (local but persistent) message history for a certain conversation
     private LinkedList<String> getConversationMessages(String recipient) {
         return convs.get(recipient);
     }
 
+    //Add message to a conversation's history (local but persistent)
     private void addMessageToConv(String message, String recipient) {
         LinkedList<String> list = convs.get(recipient);
 
@@ -180,6 +187,7 @@ public class PeerController {
         }
     }
     
+    //Search for a user to chat with
     private void performSearch() {
         String searchText = searchField.getText().trim();
 
@@ -192,14 +200,17 @@ public class PeerController {
         }
     }
     
+    //Enter a conversation tab with a certain user
     private void startConversationWithPeer(String peerId) {
         activeConversationId = peerId;
     	currentUserIdLabel.setText("Chatting with: " + peerId);
 
         messagesVBox.getChildren().clear();
 
+        //Get the history of messages of this conversation
         LinkedList<String> conv = getConversationMessages(peerId);
 
+        //Display the message history (Each message is marked to separate your sent messages from the other person's sent messages)
         if (conv != null) {
             for (String msg : conv) {
                 if (msg.startsWith("Me: ")) {
@@ -217,10 +228,12 @@ public class PeerController {
         }
     }
     
+    //Configure the send message button
     private void configureMessageHandling() {
     	sendButton.setOnAction(event -> sendMessage());	
     }
     
+    //Save the peer that we messaged in the left side (if not found, search for 3 seconds and then print message because it looks good)
     public void updatePeerList(String peerId) {
         if (peerId != null) {
             Platform.runLater(() -> {
@@ -244,6 +257,7 @@ public class PeerController {
         }
     }
 
+    //Send a message
     private void sendMessage() {
         String message = messageField.getText().trim();
 
@@ -256,6 +270,7 @@ public class PeerController {
         	boolean sent = peer.sendMessage(activeConversationId, message);
         	
             if (sent) {
+                //Still send the message if the user is not viewing the conversation
                 messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
                             .add(new ChatMessage(peer.getUserId(), message, true));
                 
@@ -264,6 +279,7 @@ public class PeerController {
                 messageField.clear();
                 updatePeerList(activeConversationId);
 
+                //Add message to conversation history
                 addMessageToConv("Me: " + message, activeConversationId);
             } 
             else {
@@ -275,6 +291,7 @@ public class PeerController {
         }
     }
 
+    //Visual representation of the message
     private void displayMessageBubble(String senderId, String content, boolean isSent) {
         HBox messageContainer = new HBox(10);
         messageContainer.setPadding(new Insets(5));
@@ -302,17 +319,20 @@ public class PeerController {
         messagesVBox.getChildren().add(messageContainer);
     }
 
+    //Add to the users that we have already communicated with
     public void addToConnected(String sender) {
         if (!connectedPeers.contains(sender)) {
             connectedPeers.add(sender);
         }
     }
 
+    //Display received message
     public void appendReceivedMessage(String sender, String content) {
         Platform.runLater(() -> {
             messageHistory.computeIfAbsent(sender, k -> new ArrayList<>())
                         .add(new ChatMessage(sender, content, false));
 
+            //Add to users we already communicated with
             if (!connectedPeers.contains(sender)) {
                 connectedPeers.add(sender);
             }
@@ -322,17 +342,19 @@ public class PeerController {
             if (activeConversationId != null && activeConversationId.equals(sender)) {
                 displayMessageBubble(sender, content, false);
             } else {
+                //Unread messages bubble
                 unreadMessageCounts.merge(sender, 1, Integer::sum);
                 refreshContactsList();
             }
         });
     }
 
+    //Count bubble but for offline messages
     public void updateOfflineMsgCount(String sender) {
-        unreadMessageCounts.merge(sender, 1, Integer::sum);
+        unreadMessageCounts.merge(sender, 0, Integer::sum);
         refreshContactsList();
     }
-
+    
     private void refreshContactsList() {
         contactsListView.refresh();
     }
@@ -363,7 +385,8 @@ public class PeerController {
         alert.showAndWait();
     }
 
+    //Save message history on close
     public void saveMessages() {
-        peer.saveMessageHistory(convs);
+        peer.saveMessageHistory(convs, unreadMessageCounts);
     }
 }

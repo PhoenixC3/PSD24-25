@@ -25,6 +25,7 @@ public class Peer {
     private SSLSocket dbServer;
     private ObjectOutputStream oosServer;
     private ObjectInputStream oisServer;
+    private HashMap<String, Integer> unreadMsgs = new HashMap<String, Integer>();
 
     public Peer(String userId, String password, int port, PeerController peerController) throws Exception {
         this.userId = userId;
@@ -303,6 +304,17 @@ public class Peer {
 
             if (res.equals("OK")) {
                 HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
+                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+
+                for (String key : unreadMsgs.keySet()) {
+                    if (unread.containsKey(key)) {
+                        int temp = unread.get(key);
+                        int temp2 = unreadMsgs.get(key);
+
+                        unreadMsgs.put(key, (temp + temp2));
+                    }
+                }
+
                 return convs;
             }
 
@@ -402,7 +414,7 @@ public class Peer {
         }
     }
 
-    public void saveMessageHistory(HashMap<String, LinkedList<String>> convs) {
+    public void saveMessageHistory(HashMap<String, LinkedList<String>> convs, HashMap<String, Integer> unread) {
         try {
 
             oosServer.writeObject("SAVEMSGS");
@@ -412,6 +424,9 @@ public class Peer {
             oosServer.flush();
 
             oosServer.writeObject(convs);
+            oosServer.flush();
+
+            oosServer.writeObject(unread);
             oosServer.flush();
         } catch (Exception e) {
             e.printStackTrace();
@@ -431,6 +446,10 @@ public class Peer {
 
             if (res.equals("OK")) {
                 HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) oisServer.readObject();
+
+                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+                unreadMsgs = unread;
+
                 HashMap<String, LinkedList<Message>> offMsgs = loadOfflineMessageHistory();
 
                 if (offMsgs != null) {
@@ -520,4 +539,8 @@ public class Peer {
 
         return null;
     } 
+
+    public HashMap<String, Integer> getMessageCounts() {
+        return unreadMsgs;
+    }
 }

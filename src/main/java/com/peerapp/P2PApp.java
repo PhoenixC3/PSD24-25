@@ -32,6 +32,7 @@ public class P2PApp extends Application {
         loginStage.setScene(new Scene(root, 400, 200));
         loginStage.show();
 
+        //Confirm exit (because it looks good)
         loginStage.setOnCloseRequest(event -> {
             event.consume();
             exitConfirmation(event);
