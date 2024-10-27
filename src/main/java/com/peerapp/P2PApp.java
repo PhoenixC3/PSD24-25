@@ -1,68 +1,75 @@
-package com.peerapp;
+	package com.peerapp;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
-
-import java.net.BindException;
-import java.net.ServerSocket;
-import java.util.Random;
-import java.util.Scanner;
+import javafx.stage.WindowEvent;
 
 public class P2PApp extends Application {
-    private static final int MIN_PORT = 1024; // Minimum port number
-    private static final int MAX_PORT = 65535; // Maximum port number
 
     @Override
     public void start(Stage stage) throws Exception {
-        String userId = System.getProperty("userId", "User1"); // Default to "User1" if not specified
+        String userId = System.getProperty("userId");
+        
+        if (userId == null || userId.isEmpty()) {
+            showLoginScreen();
+        } else {
+            String userPassword = System.getProperty("userPassword");
+            int port = Integer.parseInt(System.getProperty("userPort"));
+            showMessagingApp(userId, port, userPassword);
+        }
+    }
 
-        // Dynamically find an available port
-        int port = findAvailableRandomPort();
+    private void showLoginScreen() throws Exception {
+        FXMLLoader fxmlLoader = new FXMLLoader(P2PApp.class.getResource("/com/peerapp/login.fxml"));
+        Parent root = fxmlLoader.load();
+        Stage loginStage = new Stage();
+        loginStage.setTitle("Login");
+        loginStage.setScene(new Scene(root, 400, 200));
+        loginStage.show();
 
+        loginStage.setOnCloseRequest(event -> {
+            event.consume();
+            exitConfirmation(event);
+        });
+    }
+
+    private void showMessagingApp(String userId, int port, String userPassword) throws Exception {
         FXMLLoader fxmlLoader = new FXMLLoader(P2PApp.class.getResource("/com/peerapp/peer.fxml"));
         Parent root = fxmlLoader.load();
         PeerController controller = fxmlLoader.getController();
+        controller.initialize(userId, port, userPassword);
 
-        // Initialize with user ID and port
-        controller.initialize(userId, port);
+        Stage appStage = new Stage();
+        appStage.setTitle("P2P Messaging App - " + userId);
+        appStage.setScene(new Scene(root, 600, 400));
+        appStage.show();
 
-        Scene scene = new Scene(root, 600, 400);
-        stage.setTitle("P2P Messaging App - " + userId);
-        stage.setScene(scene);
-        stage.show();
+        appStage.setOnCloseRequest(event -> {
+            event.consume();
+            controller.saveMessages();
+            exitConfirmation(event);
+        });
     }
 
-    // Method to find an available random port
-    private int findAvailableRandomPort() {
-        Random random = new Random();
-        int port;
+    private void exitConfirmation(WindowEvent event) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Exit Confirmation");
+        alert.setHeaderText(null);
+        alert.setContentText("Are you sure you want to exit?");
 
-        while (true) {
-            port = random.nextInt((MAX_PORT - MIN_PORT) + 1) + MIN_PORT; // Generate random port
-
-            try (ServerSocket serverSocket = new ServerSocket(port)) {
-                // Successfully created the server socket, break the loop
-                break; // If we successfully create the ServerSocket, exit the loop
-            } catch (BindException e) {
-                // Port is already in use; try the next random port
-                System.out.println("Port " + port + " is already in use. Trying another one.");
-            } catch (Exception e) {
-                e.printStackTrace();
-                throw new RuntimeException("Error while trying to find available port: " + e.getMessage());
+        alert.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                System.exit(0);
             }
-        }
-
-        return port; // Return the found available port
+        });
     }
 
     public static void main(String[] args) {
-        System.setProperty("userId", "User2");
-    
-        System.out.println("User ID: " + System.getProperty("userId"));
         launch(args);
     }
-    
 }

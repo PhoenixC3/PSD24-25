@@ -5,16 +5,16 @@ import java.io.Serializable;
 public class Message implements Serializable {
     private String sender;
     private String recipient;
+    private byte[] encKey;
     private String encryptedContent;
-    private String hmac;
-    private String originalContent;
+    private String signedMessage;
 
-    public Message(String sender, String recipient, String encryptedContent, String hmac, String originalContent) {
+    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage) {
         this.sender = sender;
         this.recipient = recipient;
         this.encryptedContent = encryptedContent;
-        this.hmac = hmac;
-        this.originalContent = originalContent;
+        this.signedMessage = signedMessage;
+        this.encKey = encKey;
     }
 
     public String getSender() {
@@ -29,11 +29,11 @@ public class Message implements Serializable {
         return encryptedContent;
     }
 
-    public String getHmac() {
-        return hmac;
+    public String getSignedMessage() {
+        return signedMessage;
     }
 
-    public String getOriginalContent() {
-        return originalContent;
+    public byte[] getEncKey() {
+        return encKey;
     }
 }
