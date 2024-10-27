@@ -317,7 +317,7 @@ public class Peer {
             try (ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
                 ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
                 
-                //Handle concurrency
+                //Handle socket concurrency
                 synchronized (socket) {
                     Message message = (Message) ois.readObject();
                     boolean notfound = false;

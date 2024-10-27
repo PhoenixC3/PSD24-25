@@ -41,6 +41,7 @@ public class SSLServer {
         Statement stmt = null;
 
         try {
+            //Create peer table
             conn = connect();
             stmt = conn.createStatement();
             stmt.execute(CREATE_PEER_TABLE_SQL);
@@ -56,6 +57,7 @@ public class SSLServer {
                 e.printStackTrace();
             }
 
+            //Create message table
             conn = connect();
             stmt = conn.createStatement();
             stmt.execute(CREATE_MESSAGE_TABLE_SQL);
@@ -75,26 +77,24 @@ public class SSLServer {
         }
         
         try {
-            // Load the keystore
+            //Create the server socket
             KeyStore keyStore = KeyStore.getInstance("JKS");
             try (FileInputStream keyStoreInput = new FileInputStream("keystores/server_keystore.jks")) {
                 keyStore.load(keyStoreInput, "serverpass".toCharArray());
             }
 
-            // Set up the KeyManagerFactory
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             kmf.init(keyStore, "serverpass".toCharArray());
 
-            // Set up the SSL context
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(kmf.getKeyManagers(), null, null);
 
-            // Create an SSLServerSocketFactory and SSLServerSocket
             SSLServerSocketFactory sslServerSocketFactory = sslContext.getServerSocketFactory();
             svSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
 
             System.out.println("Server is listening on port: " + PORT);
 
+            //Listen for connections
             while (true) {
                 try {
                     SSLSocket socket = (SSLSocket) svSocket.accept();
@@ -111,13 +111,15 @@ public class SSLServer {
         }
     }
 
+    //Connect to the database
     private static Connection connect() throws SQLException {
         if (conn == null || conn.isClosed()) {
             conn = DriverManager.getConnection(DB_URL);
         }
         return conn;
     }
-
+    
+    //Close the server socket and the database connection
     private static void close() {
         try {
             if (svSocket != null && !svSocket.isClosed()) {
@@ -135,7 +137,6 @@ public class SSLServer {
     }
 }
 
-// ClientHandler class to handle client connections
 class ClientHandler implements Runnable {
     private final SSLSocket sslSocket;
     private static final String DB_URL = "jdbc:sqlite:peers.db";
@@ -151,6 +152,8 @@ class ClientHandler implements Runnable {
              ObjectOutputStream out = new ObjectOutputStream(sslSocket.getOutputStream())) {
 
             String clientMessage;
+
+            //Handle user requests until dying
             while (true) {
                 try {
                     clientMessage = (String) in.readObject();
@@ -164,12 +167,14 @@ class ClientHandler implements Runnable {
                                 String ip = (String) in.readObject();
                                 int port = (int) in.readObject();
                                 byte[] cert = (byte[]) in.readObject();
-        
+
+                                //Register the user's entry in the database
                                 String resReg = saveUserInDatabase(user, hashedPassword, salt, ip, port, cert);
 
                                 out.writeObject(resReg);
                                 out.flush();
 
+                                //Insert placeholders for unread messages and message history
                                 Connection connReg = null;
                                 PreparedStatement stmtReg = null;
                                 String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
@@ -224,6 +229,7 @@ class ClientHandler implements Runnable {
                                 String username = (String) in.readObject();
                                 String password = (String) in.readObject();
 
+                                //Handle the login
                                 String resLog = authenticateUser(username, password);
         
                                 if (resLog.equals("OK")) {
@@ -237,7 +243,8 @@ class ClientHandler implements Runnable {
                                         conn = connect();
                                         String selectQuery = "SELECT * FROM peers WHERE username = ?";
                                         stmt = conn.prepareStatement(selectQuery);
-                            
+                                        
+                                        //Get the user's port
                                         try {
                                             stmt.setString(1, username);
                                             ResultSet rs = stmt.executeQuery();
@@ -274,7 +281,8 @@ class ClientHandler implements Runnable {
         
                             case "GETPEER":
                                 String peerUsername = (String) in.readObject();
-        
+                                
+                                //Get peer info
                                 String peerIp = getPeerIp(peerUsername);
                                 int peerPort = getPeerPort(peerUsername);
                                 byte[] peerCert = getPeerCert(peerUsername);
@@ -317,6 +325,7 @@ class ClientHandler implements Runnable {
                                     mapUnread = byteOut.toByteArray();
                                 }
 
+                                //Save history of messages and unread message count in the database
                                 Connection conn = null;
                                 PreparedStatement stmt = null;
                                 String insertQuery = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
@@ -359,7 +368,7 @@ class ClientHandler implements Runnable {
                                 ResultSet rs = null;
                                 String selectQuery = "SELECT msgs, unread FROM messages WHERE username = ?";
 
-                                // Deserialize the byte array back to HashMap
+                                //Deserialize the byte array back to HashMap
                                 HashMap<String, LinkedList<String>> convsLoad = new HashMap<String, LinkedList<String>>();
                                 HashMap<String, Integer> unreadLoad = new HashMap<String, Integer>();
                             
@@ -373,6 +382,7 @@ class ClientHandler implements Runnable {
                                         mapLoad = rs.getBytes("msgs");
                                         mapUnreadLoad = rs.getBytes("unread");
 
+                                        //Send the message history
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapLoad);
                                                 ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
                             
@@ -387,6 +397,7 @@ class ClientHandler implements Runnable {
                                             e.printStackTrace();
                                         }
 
+                                        //Send the unread message count
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapUnreadLoad);
                                                 ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
                             
@@ -417,6 +428,7 @@ class ClientHandler implements Runnable {
                                             e.printStackTrace();
                                         }
 
+                                        //Delete unread count, to be updated in the next app iteration
                                         String updateQueryLoad = "UPDATE messages SET unread = ? WHERE username = ?";
 
                                         try {
@@ -457,11 +469,7 @@ class ClientHandler implements Runnable {
 
                             case "ADDOFFLINE":
                                 Message msg = (Message) in.readObject();
-
-                                // Get the messages map of recipient
                                 byte[] mapOff = null;
-
-                                // Get the unread count map of recipient
                                 byte[] unreadMapOff = null;
                             
                                 Connection connOff = null;
@@ -472,7 +480,7 @@ class ClientHandler implements Runnable {
                                 LinkedList<Message> myMsgs = null;
 
                                 HashMap<String, Integer> unreadOff = null;
-                            
+                                
                                 try {
                                     connOff = connect();
                                     stmtOff = connOff.prepareStatement(selectQueryOff);
@@ -480,6 +488,7 @@ class ClientHandler implements Runnable {
                                     rsOff = stmtOff.executeQuery();
                             
                                     if (rsOff.next()) {
+                                        //Update the offline conversation history of the user
                                         mapOff = rsOff.getBytes("msgs");
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapOff);
@@ -501,8 +510,7 @@ class ClientHandler implements Runnable {
 
                                         convsOff.put(msg.getSender(), myMsgs);
 
-                                        //
-
+                                        //Update the offline unread message count of the user
                                         unreadMapOff = rsOff.getBytes("unread");
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(unreadMapOff);
@@ -517,6 +525,7 @@ class ClientHandler implements Runnable {
                                     }
                                     else 
                                     {
+                                        //If it is the first time, start count at 1 and add message to an empty list
                                         convsOff = new HashMap<String, LinkedList<Message>>();
                                         myMsgs = new LinkedList<Message>();
                                         unreadOff = new HashMap<String, Integer>();
@@ -544,6 +553,7 @@ class ClientHandler implements Runnable {
                                     }
                                 }
 
+                                //Update the entry in the database (new entry called offline:username)
                                 String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
 
                                 try {
@@ -615,7 +625,7 @@ class ClientHandler implements Runnable {
                                     if (rsLoadOff.next()) {
                                         getMapLoadOff = rsLoadOff.getBytes("msgs");
                             
-                                        // Deserialize the byte array back to HashMap
+                                        //Deserialize the byte array back to HashMap
                                         HashMap<String, LinkedList<Message>> convsLoadOff;
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(getMapLoadOff);
@@ -632,7 +642,7 @@ class ClientHandler implements Runnable {
 
                                         getUnreadLoadOff = rsLoadOff.getBytes("unread");
                             
-                                        // Deserialize the byte array back to HashMap
+                                        //Deserialize the byte array back to HashMap
                                         HashMap<String, Integer> unreadLoadOff;
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(getUnreadLoadOff);
@@ -648,6 +658,7 @@ class ClientHandler implements Runnable {
                                             stmtLoadOff.close();
                                         }
 
+                                        //Delete old offline entry, as the messages were merged with the conversation history
                                         String deleteQuery = "DELETE FROM messages WHERE username = ?";
 
                                         stmtLoadOff = connLoadOff.prepareStatement(deleteQuery);
@@ -704,6 +715,7 @@ class ClientHandler implements Runnable {
         }
     }
 
+    //Connect to the database
     public static Connection connect() throws SQLException {
         if (conn == null || conn.isClosed()) {
             conn = DriverManager.getConnection(DB_URL);
@@ -711,6 +723,7 @@ class ClientHandler implements Runnable {
         return conn;
     }
 
+    //Save the user in the database
     private String saveUserInDatabase(String username, String hashedPassword, byte[] salt, String ip, int port, byte[] cert) {
         Connection conn = null;
         PreparedStatement stmt = null;
@@ -718,7 +731,8 @@ class ClientHandler implements Runnable {
     
         try {
             conn = connect();
-            // Check if user already exists
+
+            // Check if the user already exists
             String checkUserQuery = "SELECT COUNT(*) FROM peers WHERE username = ?";
             stmt = conn.prepareStatement(checkUserQuery);
             stmt.setString(1, username);
@@ -740,6 +754,7 @@ class ClientHandler implements Runnable {
             stmt.setBytes(6, cert);
     
             stmt.executeUpdate();
+
             return "OK";
         } catch (Exception e) {
             System.out.println("Error while updating peer information: " + e.getMessage());
@@ -762,6 +777,7 @@ class ClientHandler implements Runnable {
         }
     }
 
+    //Authenticate user
     private String authenticateUser(String username, String password) {
         Connection conn = null;
         PreparedStatement stmt = null;
@@ -779,6 +795,7 @@ class ClientHandler implements Runnable {
                     byte[] salt = rs.getBytes("salt");
                     String storedPassword = rs.getString("password");
 
+                    //Verify with stored encrypted password
                     boolean res = EncryptionUtil.verifyPassword(password, storedPassword, salt);
 
                     if (res) {
@@ -811,7 +828,7 @@ class ClientHandler implements Runnable {
         }
     }
 
-    // Method to retrieve the port based on the username
+    //Retrieve the peer IP
     private static String getPeerIp(String username) {
         String selectQuery = "SELECT ip FROM peers WHERE username = ?";
         String ip = "";
@@ -821,8 +838,6 @@ class ClientHandler implements Runnable {
         try {
             conn = connect();
             stmt = conn.prepareStatement(selectQuery);
-
-            // Set the username in the query
             stmt.setString(1, username);
 
             ResultSet rs = stmt.executeQuery();
@@ -853,7 +868,7 @@ class ClientHandler implements Runnable {
         return ip;
     }
 
-    // Method to retrieve the ip:port based on the username
+    //Retrieve the peer port
     private static int getPeerPort(String username) {
         String selectQuery = "SELECT port FROM peers WHERE username = ?";
         int port = -1;
@@ -863,8 +878,6 @@ class ClientHandler implements Runnable {
         try {
             conn = connect();
             stmt = conn.prepareStatement(selectQuery);
-
-            // Set the username in the query
             stmt.setString(1, username);
 
             ResultSet rs = stmt.executeQuery();
@@ -895,7 +908,7 @@ class ClientHandler implements Runnable {
         return port;
     }
 
-    // Method to retrieve the certificate based on the username
+    //Retrieve the peer's public key certificate
     private static byte[] getPeerCert(String username) {
         String selectQuery = "SELECT cert FROM peers WHERE username = ?";
         byte[] cert = null;
@@ -905,8 +918,6 @@ class ClientHandler implements Runnable {
         try {
             conn = connect();
             stmt = conn.prepareStatement(selectQuery);
-
-            // Set the username in the query
             stmt.setString(1, username);
 
             ResultSet rs = stmt.executeQuery();
