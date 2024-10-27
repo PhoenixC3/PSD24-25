@@ -500,6 +500,9 @@ public class Peer {
 
                                 senderConvs.add(decryptedContent);
                                 convs.put(msg.getSender(), senderConvs);
+
+                                javafx.application.Platform.runLater(() -> peerController.updateOfflineMsgCount(msg.getSender()));
+                                javafx.application.Platform.runLater(() -> peerController.addToConnected(msg.getSender()));
                             } else {
                                 System.out.println("HMAC verification failed for message from " + msg.getSender());
                             }

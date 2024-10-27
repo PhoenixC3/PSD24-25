@@ -168,6 +168,45 @@ class ClientHandler implements Runnable {
 
                                 out.writeObject(resReg);
                                 out.flush();
+
+                                Connection connReg = null;
+                                PreparedStatement stmtReg = null;
+                                String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs) VALUES (?, ?)";
+                                HashMap<String, LinkedList<String>> convsReg = new HashMap<String, LinkedList<String>>();
+                                byte[] mapReg = null;
+
+                                try {
+                                    connReg = connect();
+                                    stmtReg = conn.prepareStatement(insertQueryReg);
+
+                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                        outMap.writeObject(convsReg);
+                                        mapReg = byteOut.toByteArray();
+                                    }
+    
+                                    stmtReg.setString(1, user);
+                                    stmtReg.setBytes(2, mapReg);
+                            
+                                    stmtReg.executeUpdate();
+
+                                    System.out.println("Message placeholder saved.");
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmtReg != null) {
+                                            stmtReg.close();
+                                        }
+                                        if (connReg != null) {
+                                            connReg.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
                                 break;
         
                             case "LOGIN":
@@ -297,6 +336,9 @@ class ClientHandler implements Runnable {
                                 PreparedStatement stmtLoad = null;
                                 ResultSet rs = null;
                                 String selectQuery = "SELECT msgs FROM messages WHERE username = ?";
+
+                                // Deserialize the byte array back to HashMap
+                                HashMap<String, LinkedList<String>> convsLoad = new HashMap<String, LinkedList<String>>();
                             
                                 try {
                                     connLoad = connect();
@@ -306,9 +348,6 @@ class ClientHandler implements Runnable {
                             
                                     if (rs.next()) {
                                         mapLoad = rs.getBytes("msgs");
-                            
-                                        // Deserialize the byte array back to HashMap
-                                        HashMap<String, LinkedList<String>> convsLoad;
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapLoad);
                                                 ObjectInputStream inMap = new ObjectInputStream(byteIn)) {

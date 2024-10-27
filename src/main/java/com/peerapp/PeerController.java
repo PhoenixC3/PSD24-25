@@ -302,6 +302,12 @@ public class PeerController {
         messagesVBox.getChildren().add(messageContainer);
     }
 
+    public void addToConnected(String sender) {
+        if (!connectedPeers.contains(sender)) {
+            connectedPeers.add(sender);
+        }
+    }
+
     public void appendReceivedMessage(String sender, String content) {
         Platform.runLater(() -> {
             messageHistory.computeIfAbsent(sender, k -> new ArrayList<>())
@@ -320,6 +326,11 @@ public class PeerController {
                 refreshContactsList();
             }
         });
+    }
+
+    public void updateOfflineMsgCount(String sender) {
+        unreadMessageCounts.merge(sender, 1, Integer::sum);
+        refreshContactsList();
     }
 
     private void refreshContactsList() {
