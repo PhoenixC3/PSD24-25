@@ -17,14 +17,17 @@ import javax.crypto.SecretKey;
 
 public class Peer {
     private String userId;
-    String password;
+    private String password;
     
     private SSLServerSocket serverSocket;
     private final int PORT;
+
     private PeerController peerController;
+
     private SSLSocket dbServer;
     private ObjectOutputStream oosServer;
     private ObjectInputStream oisServer;
+
     private HashMap<String, Integer> unreadMsgs = new HashMap<String, Integer>();
 
     public Peer(String userId, String password, int port, PeerController peerController) throws Exception {
@@ -32,10 +35,16 @@ public class Peer {
         this.password = password;
         this.PORT = port;
         this.peerController = peerController;
+
+        //Set up connection to server
         this.dbServer = contactServer();
         this.oosServer = new ObjectOutputStream(dbServer.getOutputStream());
         this.oisServer = new ObjectInputStream(dbServer.getInputStream());
+
+        //Set up our receiving socket
         this.serverSocket = createServerSocket();
+
+        //Start listening
         new Thread(this::listenForMessages).start();
     }
 
@@ -43,6 +52,7 @@ public class Peer {
         return userId;
     }
 
+    //Create our SSL/TLS socket for receiving (Peer server)
     private SSLServerSocket createServerSocket() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("JKS");
         try (FileInputStream keyStoreInput = new FileInputStream("keystores/" + userId + "_keystore.jks")) {
@@ -59,6 +69,7 @@ public class Peer {
         return (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
     }
 
+    //Listen for incoming messages
     private void listenForMessages() {
         while (true) {
             try {
@@ -70,24 +81,25 @@ public class Peer {
         }
     }
 
+    //Send a message through client socket
     public synchronized boolean sendMessage(String recipient, String content) {
         SSLSocket socket = null;
         ObjectOutputStream oos = null;
 
         try {
-            // Send the message using SSL socket
+            //Create the client SSL/TLS socket
             socket = createClientSocket(recipient);
 
             if (socket != null) {   
-                // Generate secret key and encrypt with recipient's public key
+                //Generate a shared secret key for the message
                 SecretKey key = EncryptionUtil.generateSecretKey();
                 PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
         
-                // Encrypt the message content
+                //Encrypt the message content with the secret key
                 String encryptedContent = EncryptionUtil.encrypt(content, key);
         
-                // Sign the message
+                //Sign the message for integrity
                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                 String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
         
@@ -101,19 +113,16 @@ public class Peer {
             }
             else 
             {
-                // Generate secret key and encrypt with recipient's public key
+                //The message is "sent" (to the server for offline storage) but stays in the offline messaging queue
                 SecretKey key = EncryptionUtil.generateSecretKey();
                 PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
         
-                // Encrypt the message content
                 String encryptedContent = EncryptionUtil.encrypt(content, key);
         
-                // Sign the message
                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                 String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
         
-                // Create message object
                 Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
 
                 try {
@@ -138,6 +147,7 @@ public class Peer {
         return false;
     }
 
+    //Create the socket to communicate with the client
     private SSLSocket createClientSocket(String recipient) throws Exception {
         String ip = null;
         int port = -1;
@@ -151,13 +161,16 @@ public class Peer {
                 trustStore.load(trustStoreInput, password.toCharArray());
             }
 
+            //Get peer data
             oosServer.writeObject("GETPEER");
             oosServer.flush();
+
             oosServer.writeObject(recipient);
             oosServer.flush();
 
             String res = (String) oisServer.readObject();
 
+            //Add user to trusted for SSL/TLS sockets
             if (res.equals("OK")) {
                 ip = (String) oisServer.readObject();
                 port = (int) oisServer.readObject();
@@ -191,6 +204,7 @@ public class Peer {
         }
     }
 
+    //Create a socket connection with the database server
     private SSLSocket contactServer() throws Exception {
         KeyStore trustStore = KeyStore.getInstance("JKS");
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
@@ -207,90 +221,52 @@ public class Peer {
     
         return (SSLSocket) sslSocketFactory.createSocket("127.0.0.1", 8080);
     }
-    
-    public String decryptMessage(Message message) {
-        try {
-            // Step 1: Get the sender's public key from the truststore
-            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
 
-            // Step 2: Verify the signature of the encrypted content
-            if (!EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
-                // Signature verification failed
-                System.out.println("Signature verification failed for message from " + message.getSender());
-                return "Invalid message signature.";
-            }
-
-            // Step 3: Decrypt the AES key using this peer's private key
-            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-            SecretKey secretKey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
-
-            // Step 4: Decrypt the content using the decrypted AES key
-            String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), secretKey);
-
-            // Return the decrypted content
-            return decryptedContent;
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "Error decrypting message: " + e.getMessage();
-        }
-    }
-
-    
+    //Get peer's info from the database server
     public void getPeerInfo(String username) {
-        SSLSocket socket = null;
-        ObjectOutputStream oos = null;
-        ObjectInputStream ois = null;
-
         if (username.equals(userId)) {
+            //Can't send a message to yourself
             peerController.updatePeerList(null);
         }
         else
         {
             try {
-                socket = contactServer();
-                
-                oos = new ObjectOutputStream(socket.getOutputStream());
-                ois = new ObjectInputStream(socket.getInputStream());
+                //Ask the server if the user exists
+                oosServer.writeObject("GETPEER");
+                oosServer.flush();
+
+                oosServer.writeObject(username);
+                oosServer.flush();
     
-                oos.writeObject("GETPEER");
-                oos.flush();
-                oos.writeObject(username);
-                oos.flush();
-    
-                String status = (String) ois.readObject();
+                String status = (String) oisServer.readObject();
                 
                 if (status.equals("OK")) {
-                    String ip = (String) ois.readObject();
-                    int port = (int) ois.readObject();
-                    byte[] cert = (byte[]) ois.readObject();
-    
+                    String ip = (String) oisServer.readObject();
+                    int port = (int) oisServer.readObject();
+                    byte[] cert = (byte[]) oisServer.readObject();
+                    
+                    //Send it to the controller
                     Platform.runLater(() -> {
                         peerController.updatePeerList(username);
                     });
                 }
                 else 
                 {
+                    //User does not exist
                     peerController.updatePeerList(null);
                 }
     
             } catch (Exception e) {
                 e.printStackTrace();
+
                 Platform.runLater(() -> {
                     peerController.appendError("Error querying peer information: " + e.getMessage());
                 });
-            } finally {
-                try {
-                    if (ois != null) ois.close();
-                    if (oos != null) oos.close();
-                    if (socket != null) socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
             }
         }
     }
 
+    //Get the messages we received while offline and the unread counts (by conversation)
     public HashMap<String, LinkedList<Message>> loadOfflineMessageHistory() {
         try {
 
@@ -306,6 +282,7 @@ public class Peer {
                 HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
                 HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
 
+                //Add the number of unread offline messages to the number of unread online messages
                 for (String key : unreadMsgs.keySet()) {
                     if (unread.containsKey(key)) {
                         int temp = unread.get(key);
@@ -339,7 +316,8 @@ public class Peer {
         public void run() {
             try (ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
                 ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
-                    
+                
+                //Handle concurrency
                 synchronized (socket) {
                     Message message = (Message) ois.readObject();
                     boolean notfound = false;
@@ -393,18 +371,20 @@ public class Peer {
                     {
                         PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
                     
-                        // Verify the signature of the message
+                        //Verify the integrity of the message
                         if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
+                            //Decrypt the message
                             PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                             SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
 
                             String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey);
 
-                            // Update the UI with the received message
+                            //Send it to the controller
                             javafx.application.Platform.runLater(() -> peerController.appendReceivedMessage(message.getSender(), decryptedContent));
                         } else {
-                            javafx.application.Platform.runLater(() -> peerController.appendError("HMAC verification failed for message from " + message.getSender()));
-                            System.out.println("HMAC verification failed for message from " + message.getSender());
+                            //Integrity check failed
+                            javafx.application.Platform.runLater(() -> peerController.appendError("Integrity verification failed for message from " + message.getSender()));
+                            System.out.println("Integrity verification failed for message from " + message.getSender());
                         }
                     }
                 }
@@ -414,6 +394,7 @@ public class Peer {
         }
     }
 
+    //Save the history of messages (on closing the app)
     public void saveMessageHistory(HashMap<String, LinkedList<String>> convs, HashMap<String, Integer> unread) {
         try {
 
@@ -423,9 +404,11 @@ public class Peer {
             oosServer.writeObject(userId);
             oosServer.flush();
 
+            //Message history
             oosServer.writeObject(convs);
             oosServer.flush();
 
+            //Number of unread messages
             oosServer.writeObject(unread);
             oosServer.flush();
         } catch (Exception e) {
@@ -433,6 +416,7 @@ public class Peer {
         }
     }
     
+    //Load the history of messages and the unread counts
     public HashMap<String, LinkedList<String>> loadMessageHistory() {
         try {
 
@@ -445,14 +429,20 @@ public class Peer {
             String res = (String) oisServer.readObject();
 
             if (res.equals("OK")) {
+                //Messages history
                 HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) oisServer.readObject();
 
+                //Unread counts by conversation
                 HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+
+                //Using a global variable because we can't return both maps
                 unreadMsgs = unread;
 
+                //Messages received offline
                 HashMap<String, LinkedList<Message>> offMsgs = loadOfflineMessageHistory();
 
                 if (offMsgs != null) {
+                    //For each offline message, check the intergity and decrypt it
                     for (String key : offMsgs.keySet()) {
                         LinkedList<Message> msgs = offMsgs.get(key);
                         KeyStore trustStore = KeyStore.getInstance("JKS");
@@ -462,13 +452,13 @@ public class Peer {
                         }
 
                         for (Message msg : msgs) {
-                            
                             if (trustStore.getCertificate(msg.getSender()) == null) {
                                 // Add trusted
                                 try {
         
                                     oosServer.writeObject("GETPEER");
                                     oosServer.flush();
+
                                     oosServer.writeObject(msg.getSender());
                                     oosServer.flush();
         
@@ -503,6 +493,7 @@ public class Peer {
 
                                 String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey);
 
+                                //Adding the "You" and "Other" identificators for the controller's visual verifications
                                 if (msg.getSender().equals(userId)) {
                                     decryptedContent = "You: " + decryptedContent;
                                 }
@@ -511,6 +502,7 @@ public class Peer {
                                     decryptedContent = "Other: " + decryptedContent;
                                 }
 
+                                //Add the offline messages to the conversations map
                                 LinkedList<String> senderConvs = convs.get(msg.getSender());
 
                                 if (senderConvs == null) {
@@ -520,16 +512,20 @@ public class Peer {
                                 senderConvs.add(decryptedContent);
                                 convs.put(msg.getSender(), senderConvs);
 
+                                //Update the unread count and add the sender to connected users (if it isn't already there) so it appears on the left side chat
                                 javafx.application.Platform.runLater(() -> peerController.updateOfflineMsgCount(msg.getSender()));
                                 javafx.application.Platform.runLater(() -> peerController.addToConnected(msg.getSender()));
                             } else {
-                                System.out.println("HMAC verification failed for message from " + msg.getSender());
+                                //Integrity check failed
+                                javafx.application.Platform.runLater(() -> peerController.appendError("Integrity verification failed for message from " + msg.getSender()));
+                                System.out.println("Integrity verification failed for message from " + msg.getSender());
                             }
                         }
                     }
 
-                    return convs;
                 }
+
+                return convs;
             }
 
             return null;

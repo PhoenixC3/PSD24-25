@@ -383,6 +383,8 @@ class ClientHandler implements Runnable {
 
                                             out.writeObject(convsLoad);
                                             out.flush();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
                                         }
 
                                         try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapUnreadLoad);
@@ -392,6 +394,37 @@ class ClientHandler implements Runnable {
 
                                             out.writeObject(unreadLoad);
                                             out.flush();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+
+                                        if (rs != null) {
+                                            rs.close();
+                                        }
+
+                                        if (stmtLoad != null) {
+                                            stmtLoad.close();
+                                        }
+
+                                        byte[] unreadUpdateLoad = null;
+
+                                        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                            ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                            outMap.writeObject(new HashMap<String, Integer>());
+                                            unreadUpdateLoad = byteOut.toByteArray();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+
+                                        String updateQueryLoad = "UPDATE messages SET unread = ? WHERE username = ?";
+
+                                        try {
+                                            stmtLoad = connLoad.prepareStatement(updateQueryLoad);
+                                            stmtLoad.setBytes(1, unreadUpdateLoad);
+                                            stmtLoad.setString(2, peerLoad);
+                                        } catch (SQLException e) {
+                                            e.printStackTrace();
                                         }
                                     } else {
                                         out.writeObject("NOK");
@@ -407,9 +440,11 @@ class ClientHandler implements Runnable {
                                         if (rs != null) {
                                             rs.close();
                                         }
+
                                         if (stmtLoad != null) {
                                             stmtLoad.close();
                                         }
+
                                         if (connLoad != null) {
                                             connLoad.close();
                                         }
@@ -608,6 +643,18 @@ class ClientHandler implements Runnable {
                                             out.writeObject(unreadLoadOff);
                                             out.flush();
                                         }
+
+                                        if (stmtLoadOff != null) {
+                                            stmtLoadOff.close();
+                                        }
+
+                                        String deleteQuery = "DELETE FROM messages WHERE username = ?";
+
+                                        stmtLoadOff = connLoadOff.prepareStatement(deleteQuery);
+
+                                        stmtLoadOff.setString(1, "offline:" + peerLoadOff);
+                                        stmtLoadOff.executeUpdate();
+
                                     } else {
                                         out.writeObject("NOK");
                                         out.flush();

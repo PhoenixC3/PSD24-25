@@ -77,12 +77,16 @@ public class PeerController {
         }
     }
 
-    //Get message history (persistent)
+    //Get message history (persistent) and fill the left side contact history list
     private void getMessages() {
         HashMap<String, LinkedList<String>> convsGet = peer.loadMessageHistory();
 
         if (convsGet != null) {
             this.convs = convsGet;
+
+            for (String key : convsGet.keySet()) {
+                addToConnected(key);
+            }
         }
     }
 
