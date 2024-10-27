@@ -1,11 +1,14 @@
 package com.peerapp;
 
 import java.net.BindException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -227,6 +230,17 @@ public class PeerController {
                     searchStatusLabel.setText("Found peer: " + peerId);
                 }
             });
+        }
+        else 
+        {
+            PauseTransition delay = new PauseTransition(javafx.util.Duration.seconds(3));
+
+            delay.setOnFinished(event -> {
+                searchProgress.setVisible(false);
+                searchStatusLabel.setText("No peers found");
+            });
+            
+            delay.play();
         }
     }
 
