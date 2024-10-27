@@ -196,7 +196,6 @@ public class PeerController {
         messagesVBox.getChildren().clear();
 
         LinkedList<String> conv = getConversationMessages(peerId);
-        System.out.println(conv);
 
         if (conv != null) {
             for (String msg : conv) {
