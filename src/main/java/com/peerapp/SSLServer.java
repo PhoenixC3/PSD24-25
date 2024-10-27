@@ -174,55 +174,58 @@ class ClientHandler implements Runnable {
                                 out.writeObject(resReg);
                                 out.flush();
 
-                                //Insert placeholders for unread messages and message history
-                                Connection connReg = null;
-                                PreparedStatement stmtReg = null;
-                                String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
-                                HashMap<String, LinkedList<String>> convsReg = new HashMap<String, LinkedList<String>>();
-                                HashMap<String, Integer> unreadReg = new HashMap<String, Integer>();
-                                byte[] mapReg = null;
-                                byte[] mapUnreadReg = null;
+                                if (resReg.equals("OK")) {
+                                    //Insert placeholders for unread messages and message history
+                                    Connection connReg = null;
+                                    PreparedStatement stmtReg = null;
+                                    String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
+                                    HashMap<String, LinkedList<String>> convsReg = new HashMap<String, LinkedList<String>>();
+                                    HashMap<String, Integer> unreadReg = new HashMap<String, Integer>();
+                                    byte[] mapReg = null;
+                                    byte[] mapUnreadReg = null;
 
-                                try {
-                                    connReg = connect();
-                                    stmtReg = conn.prepareStatement(insertQueryReg);
-
-                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                        outMap.writeObject(convsReg);
-                                        mapReg = byteOut.toByteArray();
-                                    }
-
-                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                        outMap.writeObject(unreadReg);
-                                        mapUnreadReg = byteOut.toByteArray();
-                                    }
-    
-                                    stmtReg.setString(1, user);
-                                    stmtReg.setBytes(2, mapReg);
-                                    stmtReg.setBytes(3, mapUnreadReg);
-                            
-                                    stmtReg.executeUpdate();
-
-                                    System.out.println("Message placeholder saved.");
-
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                } finally {
                                     try {
-                                        if (stmtReg != null) {
-                                            stmtReg.close();
+                                        connReg = connect();
+                                        stmtReg = conn.prepareStatement(insertQueryReg);
+
+                                        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                            ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                            outMap.writeObject(convsReg);
+                                            mapReg = byteOut.toByteArray();
                                         }
-                                        if (connReg != null) {
-                                            connReg.close();
+
+                                        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                            ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                            outMap.writeObject(unreadReg);
+                                            mapUnreadReg = byteOut.toByteArray();
                                         }
+        
+                                        stmtReg.setString(1, user);
+                                        stmtReg.setBytes(2, mapReg);
+                                        stmtReg.setBytes(3, mapUnreadReg);
+                                
+                                        stmtReg.executeUpdate();
+
+                                        System.out.println("Message placeholder saved.");
+
                                     } catch (Exception e) {
                                         e.printStackTrace();
+                                    } finally {
+                                        try {
+                                            if (stmtReg != null) {
+                                                stmtReg.close();
+                                            }
+                                            if (connReg != null) {
+                                                connReg.close();
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
                                     }
                                 }
+
                                 break;
         
                             case "LOGIN":
@@ -294,10 +297,13 @@ class ClientHandler implements Runnable {
                                 else {
                                     out.writeObject("OK");
                                     out.flush();
+
                                     out.writeObject(peerIp);
                                     out.flush();
+
                                     out.writeObject(peerPort);
                                     out.flush();
+                                    
                                     out.writeObject(peerCert);
                                     out.flush();
                                 }
@@ -733,12 +739,12 @@ class ClientHandler implements Runnable {
             conn = connect();
 
             // Check if the user already exists
-            String checkUserQuery = "SELECT COUNT(*) FROM peers WHERE username = ?";
+            String checkUserQuery = "SELECT username FROM peers WHERE username = ?";
             stmt = conn.prepareStatement(checkUserQuery);
             stmt.setString(1, username);
             rs = stmt.executeQuery();
     
-            if (rs.next() && rs.getInt(1) > 0) {
+            if (rs.next()) {
                 return "EXISTS";
             }
     

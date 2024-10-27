@@ -99,6 +99,31 @@ public class DatabaseUtil {
         //Create salt to hash password
         byte[] salt = EncryptionUtil.generateSalt();
 
+        try {
+            SSLSocket generalSocket = createGeneralClientSocket();
+            ObjectOutputStream genOos = new ObjectOutputStream(generalSocket.getOutputStream());
+            ObjectInputStream genOis = new ObjectInputStream(generalSocket.getInputStream());
+
+            genOos.writeObject("GETPEER");
+            genOos.flush();
+
+            genOos.writeObject(username);
+            genOos.flush();
+
+            String res = (String) genOis.readObject();
+
+            if (res.equals("OK")) {
+                String peerIp = (String) genOis.readObject();
+                int peerPort = (int) genOis.readObject();
+                byte[] peerCert = (byte[]) genOis.readObject();
+
+                return "EXISTS";
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         //Create the keystores and truststores for SSL/TLS (and store the server certificate as trusted by default)
         X509Certificate myCert = createKeystoreAndTruststore(username, password);
 
@@ -166,6 +191,26 @@ public class DatabaseUtil {
         KeyStore trustStore = KeyStore.getInstance("JKS");
         try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + username + "_truststore.jks")) {
             trustStore.load(trustStoreInput, password.toCharArray());
+        } catch (Exception e) {
+            return null;
+        }
+
+        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        trustManagerFactory.init(trustStore);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+
+        SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+    
+        return (SSLSocket) sslSocketFactory.createSocket("127.0.0.1", 8080);
+    }
+
+    //Create a scoket to communicate with the server (fixed port)
+    private SSLSocket createGeneralClientSocket() throws Exception {
+        KeyStore trustStore = KeyStore.getInstance("JKS");
+        try (FileInputStream trustStoreInput = new FileInputStream("truststores/general_truststore.jks")) {
+            trustStore.load(trustStoreInput, "general".toCharArray());
         } catch (Exception e) {
             return null;
         }
