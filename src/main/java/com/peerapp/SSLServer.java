@@ -347,7 +347,176 @@ class ClientHandler implements Runnable {
                                 }
                             
                                 break;
+
+                            case "ADDOFFLINE":
+                                Message msg = (Message) in.readObject();
+
+                                // Get the messages map of recipient
+                                byte[] mapOff = null;
+                            
+                                Connection connOff = null;
+                                PreparedStatement stmtOff = null;
+                                ResultSet rsOff = null;
+                                String selectQueryOff = "SELECT msgs FROM messages WHERE username = ?";
+                                HashMap<String, LinkedList<Message>> convsOff = null;
+                                LinkedList<Message> myMsgs = null;
+                            
+                                try {
+                                    connOff = connect();
+                                    stmtOff = connOff.prepareStatement(selectQueryOff);
+                                    stmtOff.setString(1, "offline:" + msg.getRecipient());
+                                    rsOff = stmtOff.executeQuery();
+                            
+                                    if (rsOff.next()) {
+                                        mapOff = rsOff.getBytes("msgs");
+
+                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapOff);
+                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
+                            
+                                            convsOff = (HashMap<String, LinkedList<Message>>) inMap.readObject();
+                                        }
+
+                                        myMsgs = convsOff.get(msg.getSender());
+
+                                        if (myMsgs == null) {
+                                            myMsgs = new LinkedList<Message>();
+                                            myMsgs.add(msg);
+                                        }
+                                        else 
+                                        {
+                                            myMsgs.add(msg);
+                                        }
+
+                                        convsOff.put(msg.getSender(), myMsgs);
+                                    }
+                                    else 
+                                    {
+                                        convsOff = new HashMap<String, LinkedList<Message>>();
+                                        myMsgs = new LinkedList<Message>();
+
+                                        myMsgs.add(msg);
+                                        convsOff.put(msg.getSender(), myMsgs);
+                                    }
+                            
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsOff != null) {
+                                            rsOff.close();
+                                        }
+                                        if (stmtOff != null) {
+                                            stmtOff.close();
+                                        }
+                                        if (connOff != null) {
+                                            connOff.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs) VALUES (?, ?)";
+
+                                try {
+                                    byte[] mapInsert = null;
+
+                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
+
+                                        outMap.writeObject(convsOff);
+                                        mapInsert = byteOut.toByteArray();
+                                    }
+
+                                    connOff = connect();
+                                    stmtOff = connOff.prepareStatement(insertQueryOff);
+
+                                    stmtOff.setString(1, "offline:" + msg.getRecipient());
+                                    stmtOff.setBytes(2, mapInsert);
+                            
+                                    stmtOff.executeUpdate();
+
+                                    System.out.println("Offline messages saved.");
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsOff != null) {
+                                            rsOff.close();
+                                        }
+                                        if (stmtOff != null) {
+                                            stmtOff.close();
+                                        }
+                                        if (connOff != null) {
+                                            connOff.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
         
+                                break;
+                                
+                            case "LOADOFFLINE":
+                                String peerLoadOff = (String) in.readObject();
+                                byte[] getMapLoadOff = null;
+                            
+                                Connection connLoadOff = null;
+                                PreparedStatement stmtLoadOff = null;
+                                ResultSet rsLoadOff = null;
+                                String selectQueryLoadOff = "SELECT msgs FROM messages WHERE username = ?";
+                            
+                                try {
+                                    connLoadOff = connect();
+                                    stmtLoadOff = connLoadOff.prepareStatement(selectQueryLoadOff);
+                                    stmtLoadOff.setString(1, "offline:" + peerLoadOff);
+                                    rsLoadOff = stmtLoadOff.executeQuery();
+                            
+                                    if (rsLoadOff.next()) {
+                                        getMapLoadOff = rsLoadOff.getBytes("msgs");
+                            
+                                        // Deserialize the byte array back to HashMap
+                                        HashMap<String, LinkedList<Message>> convsLoadOff;
+
+                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(getMapLoadOff);
+                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
+                            
+                                            convsLoadOff = (HashMap<String, LinkedList<Message>>) inMap.readObject();
+
+                                            out.writeObject("OK");
+                                            out.flush();
+
+                                            out.writeObject(convsLoadOff);
+                                            out.flush();
+                                        }
+                                    } else {
+                                        out.writeObject("NOK");
+                                        out.flush();
+
+                                        System.out.println("No offline messages found for user: " + peerLoadOff);
+                                    }
+                            
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsLoadOff != null) {
+                                            rsLoadOff.close();
+                                        }
+                                        if (stmtLoadOff != null) {
+                                            stmtLoadOff.close();
+                                        }
+                                        if (connLoadOff != null) {
+                                            connLoadOff.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                            
+                                break;
+
                             default:
                                 System.out.println("Unknown command: " + clientMessage);
         

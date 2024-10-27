@@ -196,6 +196,7 @@ public class PeerController {
         messagesVBox.getChildren().clear();
 
         LinkedList<String> conv = getConversationMessages(peerId);
+        System.out.println(conv);
 
         if (conv != null) {
             for (String msg : conv) {
@@ -210,13 +211,6 @@ public class PeerController {
     
                     displayMessageBubble(peerId, actualMsg, false);
                 }
-            }
-        }
-
-        List<ChatMessage> peerMessages = messageHistory.get(peerId);
-        if (peerMessages != null) {
-            for (ChatMessage msg : peerMessages) {
-                displayMessageBubble(msg.sender, msg.content, msg.isSent);
             }
         }
     }
@@ -304,8 +298,9 @@ public class PeerController {
                 connectedPeers.add(sender);
             }
 
+            addMessageToConv("Other: " + content, sender);
+
             if (activeConversationId != null && activeConversationId.equals(sender)) {
-                addMessageToConv("Other: " + content, sender);
                 displayMessageBubble(sender, content, false);
             } else {
                 unreadMessageCounts.merge(sender, 1, Integer::sum);

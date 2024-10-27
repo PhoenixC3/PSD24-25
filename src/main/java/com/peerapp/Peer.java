@@ -98,6 +98,37 @@ public class Peer {
 
                 return true;
             }
+            else 
+            {
+                // Generate secret key and encrypt with recipient's public key
+                SecretKey key = EncryptionUtil.generateSecretKey();
+                PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
+                byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
+        
+                // Encrypt the message content
+                String encryptedContent = EncryptionUtil.encrypt(content, key);
+        
+                // Sign the message
+                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
+        
+                // Create message object
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
+
+                try {
+
+                    oosServer.writeObject("ADDOFFLINE");
+                    oosServer.flush();
+
+                    oosServer.writeObject(message);
+                    oosServer.flush();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                return true;
+
+            }
     
         } catch (Exception e) {
             e.printStackTrace();
@@ -155,10 +186,8 @@ public class Peer {
             return ret;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            return null;
         }
-
-        return null;
     }
 
     private SSLSocket contactServer() throws Exception {
@@ -259,6 +288,30 @@ public class Peer {
                 }
             }
         }
+    }
+
+    public HashMap<String, LinkedList<Message>> loadOfflineMessageHistory() {
+        try {
+
+            oosServer.writeObject("LOADOFFLINE");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            String res = (String) oisServer.readObject();
+
+            if (res.equals("OK")) {
+                HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
+                return convs;
+            }
+
+            return null;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     private class MessageHandler implements Runnable {
@@ -378,7 +431,83 @@ public class Peer {
 
             if (res.equals("OK")) {
                 HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) oisServer.readObject();
-                return convs;
+                HashMap<String, LinkedList<Message>> offMsgs = loadOfflineMessageHistory();
+
+                if (offMsgs != null) {
+                    for (String key : offMsgs.keySet()) {
+                        LinkedList<Message> msgs = offMsgs.get(key);
+                        KeyStore trustStore = KeyStore.getInstance("JKS");
+
+                        try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
+                            trustStore.load(trustStoreInput, password.toCharArray());
+                        }
+
+                        for (Message msg : msgs) {
+                            
+                            if (trustStore.getCertificate(msg.getSender()) == null) {
+                                // Add trusted
+                                try {
+        
+                                    oosServer.writeObject("GETPEER");
+                                    oosServer.flush();
+                                    oosServer.writeObject(msg.getSender());
+                                    oosServer.flush();
+        
+                                    String resPeer = (String) oisServer.readObject();
+        
+                                    if (resPeer.equals("OK")) {
+                                        String ip = (String) oisServer.readObject();
+                                        int port = (int) oisServer.readObject();
+                                        byte[] cert = (byte[]) oisServer.readObject();
+        
+                                        CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                                        ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
+                                        X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
+        
+                                        trustStore.setCertificateEntry(msg.getSender(), certificate);
+        
+                                        try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
+                                            trustStore.store(fos, password.toCharArray());
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+
+                            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, msg.getSender());
+                    
+                            // Verify the signature of the message
+                            if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
+                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                                SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
+
+                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey);
+
+                                if (msg.getSender().equals(userId)) {
+                                    decryptedContent = "You: " + decryptedContent;
+                                }
+                                else 
+                                {
+                                    decryptedContent = "Other: " + decryptedContent;
+                                }
+
+                                LinkedList<String> senderConvs = convs.get(msg.getSender());
+
+                                if (senderConvs == null) {
+                                    senderConvs = new LinkedList<String>();
+                                }
+
+                                senderConvs.add(decryptedContent);
+                                convs.put(msg.getSender(), senderConvs);
+                            } else {
+                                System.out.println("HMAC verification failed for message from " + msg.getSender());
+                            }
+                        }
+                    }
+
+                    return convs;
+                }
             }
 
             return null;
