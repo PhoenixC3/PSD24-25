@@ -21,23 +21,22 @@ public class EncryptionUtil {
     public static SecretKey generateSecretKey() {
         try {
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-            keyGenerator.init(128);
+            keyGenerator.init(256);
             return keyGenerator.generateKey();
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         return null;
     }
 
-    // Encrypt AES key with RSA public key
+    //Encrypt AES key with RSA public key
     public static byte[] encryptAESKey(SecretKey aesKey, PublicKey publicKey) throws Exception {
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.ENCRYPT_MODE, publicKey);
         return cipher.doFinal(aesKey.getEncoded());
     }
 
-    // Decrypt AES key with RSA private key
+    //Decrypt AES key with RSA private key
     public static SecretKey decryptAESKey(byte[] encryptedAESKey, PrivateKey privateKey) throws Exception {
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.DECRYPT_MODE, privateKey);
@@ -63,7 +62,7 @@ public class EncryptionUtil {
         return new String(cipher.doFinal(decodedData));
     }
 
-    //Sign message with sender private key (Integrity)
+    //Sign message with the sender's private key
     public static String signMessage(String message, PrivateKey privateKey) throws Exception {
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initSign(privateKey);
@@ -72,7 +71,7 @@ public class EncryptionUtil {
         return Base64.getEncoder().encodeToString(signedMessage);
     }
 
-    //Verify signature with sender public key
+    //Verify signature with the sender's public key
     public static boolean verifySignature(String message, String signedMessage, PublicKey publicKey) throws Exception {
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initVerify(publicKey);
@@ -81,75 +80,53 @@ public class EncryptionUtil {
         return signature.verify(signatureBytes);
     }
 
-    //Generate MAC for message (Integrity) AINDA N USOU
-    // public static String generateHMAC(String data, SecretKey key) throws Exception {
-    //     byte[] dataBytes = data.getBytes();
-    //     Mac hmac = Mac.getInstance("HmacSHA256");
-    //     hmac.init(key);
-    //     hmac.update(dataBytes);
-    //     byte[] hmacData = hmac.doFinal(dataBytes);
-
-    //     return Base64.getEncoder().encodeToString(hmacData);
-    // }
-
-    //Verify message MAC AINDA N USOU
-    // public static boolean verifyHMAC(String data, String hmac, SecretKey key) throws Exception {
-    //     return hmac.equals(generateHMAC(data, key));
-    // }
-
-    //Get public key from keystore
+    //Get public key from truststore
     public static PublicKey getPublicKeyFromTrustStore(String trustStorePath, String trustStorePassword, String alias) throws Exception {
-        // Load the truststore
         KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
         try (FileInputStream trustStoreStream = new FileInputStream(trustStorePath)) {
             trustStore.load(trustStoreStream, trustStorePassword.toCharArray());
         }
 
-        //Get the certificate using the alias
         X509Certificate certificate = (X509Certificate) trustStore.getCertificate(alias);
-        
         if (certificate == null) {
             throw new Exception("Certificate not found for alias: " + alias);
         }
-
-        //Extract the public key from the certificate
-        PublicKey publicKey = certificate.getPublicKey();
-        return publicKey;
+        return certificate.getPublicKey();
     }
 
     //Get private key from keystore
     public static PrivateKey getPrivateKeyFromKeystore(String keystorePath, String keystorePassword, String alias, String keyPassword) throws Exception {
-        // Load the keystore
         KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
         try (FileInputStream keystoreStream = new FileInputStream(keystorePath)) {
             keyStore.load(keystoreStream, keystorePassword.toCharArray());
         }
 
-        // Retrieve the private key using the alias and key password
         PrivateKey privateKey = (PrivateKey) keyStore.getKey(alias, keyPassword.toCharArray());
         if (privateKey == null) {
             throw new Exception("Private key not found for alias: " + alias);
         }
-
         return privateKey;
     }
 
+    //Hash password with PBKDF2 and a salt
     public static String hashPassword(String password, byte[] salt) throws Exception {
-        KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 1000, 128);
+        KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256);
         SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
 
         byte[] hash = factory.generateSecret(spec).getEncoded();
         return Base64.getEncoder().encodeToString(hash);
     }
 
+    //Generate salt for password hashing
     public static byte[] generateSalt() {
         byte[] salt = new byte[16];
         new SecureRandom().nextBytes(salt);
         return salt;
     }
 
+    //Verify the password hash
     public static boolean verifyPassword(String inputPassword, String storedHash, byte[] salt) throws Exception {
-        KeySpec spec = new PBEKeySpec(inputPassword.toCharArray(), salt, 1000, 128);
+        KeySpec spec = new PBEKeySpec(inputPassword.toCharArray(), salt, 10000, 256);
         SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
 
         byte[] hash = factory.generateSecret(spec).getEncoded();
