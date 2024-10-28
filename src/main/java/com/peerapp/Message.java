@@ -8,13 +8,15 @@ public class Message implements Serializable {
     private byte[] encKey;
     private String encryptedContent;
     private String signedMessage;
+    private byte[] iv;
 
-    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage) {
+    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv) {
         this.sender = sender;
         this.recipient = recipient;
         this.encryptedContent = encryptedContent;
         this.signedMessage = signedMessage;
         this.encKey = encKey;
+        this.iv = iv;
     }
 
     public String getSender() {
@@ -35,5 +37,9 @@ public class Message implements Serializable {
 
     public byte[] getEncKey() {
         return encKey;
+    }
+
+    public byte[] getIV() {
+        return iv;
     }
 }

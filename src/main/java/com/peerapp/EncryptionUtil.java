@@ -4,6 +4,7 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.FileInputStream;
@@ -17,11 +18,16 @@ import java.security.spec.KeySpec;
 import java.util.Base64;
 
 public class EncryptionUtil {
+
+    private static final int AES_KEY_SIZE = 256;
+    private static final int GCM_IV_LENGTH = 12;
+    private static final int GCM_TAG_LENGTH = 128;
+
     //Generate an AES secret key to share
     public static SecretKey generateSecretKey() {
         try {
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-            keyGenerator.init(256);
+            keyGenerator.init(AES_KEY_SIZE);
             return keyGenerator.generateKey();
         } catch (Exception e) {
             e.printStackTrace();
@@ -45,21 +51,37 @@ public class EncryptionUtil {
     }
 
     //Encrypt message with shared secret key
-    public static String encrypt(String data, SecretKey key) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
+    public static String[] encrypt(String data, SecretKey key) throws Exception {
+        // Generate a secure random IV
+        byte[] iv = new byte[GCM_IV_LENGTH];
+        SecureRandom random = new SecureRandom();
+        random.nextBytes(iv);
+
+        // Configure AES GCM cipher
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+        cipher.init(Cipher.ENCRYPT_MODE, key, parameterSpec);
+
+        // Encrypt the plain text
         byte[] encryptedData = cipher.doFinal(data.getBytes());
 
-        return Base64.getEncoder().encodeToString(encryptedData);
+        String[] ret = {Base64.getEncoder().encodeToString(encryptedData),
+                        Base64.getEncoder().encodeToString(iv)};
+
+        return ret;
     }
 
     //Decrypt message with shared secret key
-    public static String decrypt(String encryptedData, SecretKey key) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, key);
-        byte[] decodedData = Base64.getDecoder().decode(encryptedData);
+    public static String decrypt(String encryptedData, SecretKey key, byte[] iv) throws Exception {
+        // Configure AES GCM cipher for decryption
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+        cipher.init(Cipher.DECRYPT_MODE, key, parameterSpec);
 
-        return new String(cipher.doFinal(decodedData));
+        // Decrypt the message
+        byte[] decodedData = Base64.getDecoder().decode(encryptedData);
+        byte[] decryptedBytes = cipher.doFinal(decodedData);
+        return new String(decryptedBytes);
     }
 
     //Sign message with the sender's private key

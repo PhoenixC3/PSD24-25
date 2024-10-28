@@ -10,6 +10,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedList;
 
@@ -97,14 +98,15 @@ public class Peer {
                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
         
                 //Encrypt the message content with the secret key
-                String encryptedContent = EncryptionUtil.encrypt(content, key);
+                String[] encryptedContent = EncryptionUtil.encrypt(content, key);
+                byte[] iv = Base64.getDecoder().decode(encryptedContent[1]);
         
                 //Sign the message for integrity
                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
+                String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
         
                 // Create message object
-                Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv);
                 oos = new ObjectOutputStream(socket.getOutputStream());
                 oos.writeObject(message);
                 oos.flush();
@@ -118,12 +120,13 @@ public class Peer {
                 PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
         
-                String encryptedContent = EncryptionUtil.encrypt(content, key);
+                String[] encryptedContent = EncryptionUtil.encrypt(content, key);
+                byte[] iv = Base64.getDecoder().decode(encryptedContent[1]);
         
                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                String signedMessage = EncryptionUtil.signMessage(encryptedContent, privKey);
+                String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
         
-                Message message = new Message(userId, recipient, encryptedKey, encryptedContent, signedMessage);
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv);
 
                 try {
 
@@ -377,7 +380,7 @@ public class Peer {
                             PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                             SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
 
-                            String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey);
+                            String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey, message.getIV());
 
                             //Send it to the controller
                             javafx.application.Platform.runLater(() -> peerController.appendReceivedMessage(message.getSender(), decryptedContent));
@@ -491,7 +494,7 @@ public class Peer {
                                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                                 SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
 
-                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey);
+                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey, msg.getIV());
 
                                 //Adding the "You" and "Other" identificators for the controller's visual verifications
                                 if (msg.getSender().equals(userId)) {
