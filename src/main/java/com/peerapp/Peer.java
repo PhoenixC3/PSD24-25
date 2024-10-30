@@ -285,13 +285,21 @@ public class Peer {
                 HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
                 HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
 
+                System.out.println(convs);
+                System.out.println(unread);
+
                 //Add the number of unread offline messages to the number of unread online messages
-                for (String key : unreadMsgs.keySet()) {
-                    if (unread.containsKey(key)) {
+                for (String key : unread.keySet()) {
+                    if (unreadMsgs.containsKey(key)) {
                         int temp = unread.get(key);
                         int temp2 = unreadMsgs.get(key);
 
                         unreadMsgs.put(key, (temp + temp2));
+                    }
+                    else {
+                        int temp = unread.get(key);
+
+                        unreadMsgs.put(key, temp);
                     }
                 }
 

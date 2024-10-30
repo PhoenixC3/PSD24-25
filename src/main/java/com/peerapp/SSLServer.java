@@ -525,7 +525,11 @@ class ClientHandler implements Runnable {
                                             unreadOff = (HashMap<String, Integer>) inMap.readObject();
                                         }
 
-                                        int count = unreadOff.get(msg.getSender());
+                                        int count = 0;
+
+                                        if (unreadOff.get(msg.getSender()) != null) {
+                                            count = unreadOff.get(msg.getSender());
+                                        }
 
                                         unreadOff.put(msg.getSender(), count + 1);
                                     }
