@@ -8,7 +8,9 @@ public class ResetDB {
         // Define paths
         String keystoresPath = "keystores";
         String truststoresPath = "truststores";
-        String peersDbPath = "peers.db";
+        String peersDbPath1 = "peers8080.db";
+        String peersDbPath2 = "peers8081.db";
+        String peersDbPath3 = "peers8082.db";
 
         // Define files to exclude
         String excludeKeystore = "server_keystore.jks";
@@ -22,7 +24,9 @@ public class ResetDB {
         deleteFilesInDirectoryExcept(truststoresPath, excludeTruststore1, excludeTruststore2);
 
         // Delete peers.db if it exists
-        deleteFile(peersDbPath);
+        deleteFile(peersDbPath1);
+        deleteFile(peersDbPath2);
+        deleteFile(peersDbPath3);
     }
 
     /**

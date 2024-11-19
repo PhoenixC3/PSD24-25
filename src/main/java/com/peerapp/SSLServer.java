@@ -2,22 +2,30 @@ package com.peerapp;
 
 import javax.net.ssl.*;
 import java.io.*;
+import java.net.InetAddress;
+import java.net.SocketException;
 import java.security.KeyStore;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Scanner;
 
 public class SSLServer {
 
-    private static final int PORT = 8080;
-    private static final String DB_URL = "jdbc:sqlite:peers.db";
+    private static String DB_URL = null;
     private static Connection conn;
     private static SSLServerSocket svSocket;
+    private static int PORT = -1;
 
     private static final String CREATE_PEER_TABLE_SQL = 
         "CREATE TABLE IF NOT EXISTS peers (" +
@@ -39,6 +47,13 @@ public class SSLServer {
     public static void main(String[] args) {
         Connection conn = null;
         Statement stmt = null;
+        
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter the port number for the server: ");
+        PORT = Integer.parseInt(scanner.nextLine());
+        scanner.close();
+
+        DB_URL = "jdbc:sqlite:peers" + PORT + ".db";
 
         try {
             //Create peer table
@@ -99,7 +114,7 @@ public class SSLServer {
                 try {
                     SSLSocket socket = (SSLSocket) svSocket.accept();
                     System.out.println("Client connected: " + socket.getInetAddress() + ":" + socket.getPort());
-                    new Thread(new ClientHandler(socket)).start();
+                    new Thread(new ClientHandler(socket, PORT)).start();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -130,20 +145,25 @@ public class SSLServer {
                 conn.close();
             }
         } catch (IOException e) {
-            System.err.println("Error closing SSL server socket: " + e.getMessage());
+            e.printStackTrace();
         } catch (SQLException e) {
-            System.err.println("Error closing database connection: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
 
 class ClientHandler implements Runnable {
     private final SSLSocket sslSocket;
-    private static final String DB_URL = "jdbc:sqlite:peers.db";
+    private static String DB_URL = null;
+    private static String DB_FILE = null;
     private static Connection conn;
+    private static int PORT;
 
-    public ClientHandler(SSLSocket sslSocket) {
+    public ClientHandler(SSLSocket sslSocket, int port) {
         this.sslSocket = sslSocket;
+        DB_URL = "jdbc:sqlite:peers" + port + ".db";
+        DB_FILE = "peers" + port + ".db";
+        PORT = port;
     }
 
     @Override
@@ -160,6 +180,12 @@ class ClientHandler implements Runnable {
                     
                     if (clientMessage != null) {
                         switch (clientMessage) {
+                            case "SYNC":
+                                //Receive the database file
+                                receiveFile(in, DB_FILE);
+
+                                break;
+
                             case "REGISTER":
                                 String user = (String) in.readObject();
                                 String hashedPassword = (String) in.readObject();
@@ -209,6 +235,8 @@ class ClientHandler implements Runnable {
                                         stmtReg.executeUpdate();
 
                                         System.out.println("Message placeholder saved.");
+
+                                        sychronizeDB();
 
                                     } catch (Exception e) {
                                         e.printStackTrace();
@@ -279,7 +307,7 @@ class ClientHandler implements Runnable {
                                     out.writeObject("ERROR");
                                     out.flush();
                                 }
-        
+                                
                                 break;
         
                             case "GETPEER":
@@ -348,6 +376,8 @@ class ClientHandler implements Runnable {
 
                                     System.out.println("Messages saved.");
 
+                                    sychronizeDB();
+
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -362,8 +392,9 @@ class ClientHandler implements Runnable {
                                         e.printStackTrace();
                                     }
                                 }
-        
+
                                 break;
+
                             case "LOADMSGS":
                                 String peerLoad = (String) in.readObject();
                                 byte[] mapLoad = null;
@@ -450,6 +481,8 @@ class ClientHandler implements Runnable {
 
                                         System.out.println("No messages found for user: " + peerLoad);
                                     }
+
+                                    sychronizeDB();
                             
                                 } catch (Exception e) {
                                     e.printStackTrace();
@@ -470,7 +503,7 @@ class ClientHandler implements Runnable {
                                         e.printStackTrace();
                                     }
                                 }
-                            
+                                
                                 break;
 
                             case "ADDOFFLINE":
@@ -596,6 +629,8 @@ class ClientHandler implements Runnable {
 
                                     System.out.println("Offline messages saved.");
 
+                                    sychronizeDB();
+
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -613,7 +648,7 @@ class ClientHandler implements Runnable {
                                         e.printStackTrace();
                                     }
                                 }
-        
+                                
                                 break;
                                 
                             case "LOADOFFLINE":
@@ -682,6 +717,8 @@ class ClientHandler implements Runnable {
 
                                         System.out.println("No offline messages found for user: " + peerLoadOff);
                                     }
+
+                                    sychronizeDB();
                             
                                 } catch (Exception e) {
                                     e.printStackTrace();
@@ -700,12 +737,11 @@ class ClientHandler implements Runnable {
                                         e.printStackTrace();
                                     }
                                 }
-                            
+                                
                                 break;
 
                             default:
                                 System.out.println("Unknown command: " + clientMessage);
-        
                                 break;
                         }
                     }
@@ -720,9 +756,9 @@ class ClientHandler implements Runnable {
                     System.out.println("Client disconnected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
                 }
             }
-        } catch (IOException e) {
-            System.out.println("Error in client handler: " + e.getMessage());
-        }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
     }
 
     //Connect to the database
@@ -731,6 +767,126 @@ class ClientHandler implements Runnable {
             conn = DriverManager.getConnection(DB_URL);
         }
         return conn;
+    }
+
+    //Load a certificate from a file
+    private static X509Certificate loadCertificate(String certFilePath) throws Exception {
+        try (FileInputStream certInput = new FileInputStream(certFilePath)) {
+            CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+            return (X509Certificate) certFactory.generateCertificate(certInput);
+        } catch (CertificateException e) {
+            throw new Exception("Failed to load certificate: " + e.getMessage(), e);
+        }
+    }
+
+    private void sychronizeDB() {
+        try {
+            for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+                String[] ipPort = sv.split(":");
+                String ip = ipPort[0];
+                int port = Integer.parseInt(ipPort[1]);
+        
+                KeyStore trustStore = KeyStore.getInstance("JKS");
+                try (FileInputStream keystoreStream = new FileInputStream("truststores/server_truststore.jks")) {
+                    trustStore.load(keystoreStream, "serverpass".toCharArray());
+                }
+        
+                // Get the server certificate
+                X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+        
+                // Store the server's certificate as trusted by default in the user's truststore
+                trustStore.setCertificateEntry(sv, server_cert);
+        
+                // Save the truststore file in the folder
+                try (FileOutputStream fos = new FileOutputStream("truststores/server_truststore.jks")) {
+                    trustStore.store(fos, "serverpass".toCharArray());
+                }
+        
+                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                trustManagerFactory.init(trustStore);
+        
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+        
+                SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+        
+                try (SSLSocket sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                     ObjectOutputStream out = new ObjectOutputStream(sock.getOutputStream());) {
+        
+                    out.writeObject("SYNC");
+                    out.flush();
+        
+                    // Send the database file
+                    sendFile(DB_FILE, out);
+        
+                } catch (IOException e) {
+                    System.out.println("Failed to synchronize with server: " + ip + ":" + port);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendFile(String filePath, ObjectOutputStream out) throws IOException {
+        File file = new File(filePath);
+        long fileSize = file.length();
+    
+        // Send the file size first
+        out.writeLong(fileSize);
+        out.flush();
+    
+        try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = bis.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+
+            out.flush();
+            System.out.println("File sent successfully.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void receiveFile(ObjectInputStream in, String destPath) throws IOException {
+        try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+            long fileSize = in.readLong();
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            long totalBytesRead = 0;
+    
+            while (totalBytesRead < fileSize && (bytesRead = in.read(buffer, 0, (int)Math.min(buffer.length, fileSize - totalBytesRead))) != -1) {
+                bos.write(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+            }
+            
+            bos.flush();
+            System.out.println("File received successfully.");
+        } catch (SocketException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    //Read server addresses from file
+    private List<String> readIpPortPairsFromFile(String fileName) throws IOException {
+        List<String> ipPortPairs = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(fileName))) {
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                ipPortPairs.add(line.trim());
+            }
+        }
+
+        ipPortPairs.remove(InetAddress.getLocalHost().getHostAddress() + ":" + PORT);
+        ipPortPairs.remove("localhost:" + PORT);
+
+        return ipPortPairs;
     }
 
     //Save the user in the database
@@ -767,7 +923,6 @@ class ClientHandler implements Runnable {
 
             return "OK";
         } catch (Exception e) {
-            System.out.println("Error while updating peer information: " + e.getMessage());
             e.printStackTrace();
             return "ERROR";
         } finally {
@@ -860,7 +1015,6 @@ class ClientHandler implements Runnable {
             }
 
         } catch (SQLException e) {
-            System.out.println("Error while fetching port: " + e.getMessage());
             e.printStackTrace();
         } finally {
             try {
@@ -900,7 +1054,6 @@ class ClientHandler implements Runnable {
             }
 
         } catch (SQLException e) {
-            System.out.println("Error while fetching port: " + e.getMessage());
             e.printStackTrace();
         } finally {
             try {
@@ -940,7 +1093,6 @@ class ClientHandler implements Runnable {
             }
 
         } catch (SQLException e) {
-            System.out.println("Error while fetching cert: " + e.getMessage());
             e.printStackTrace();
         } finally {
             try {

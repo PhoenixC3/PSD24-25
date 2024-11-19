@@ -10,9 +10,11 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
 
 import javax.crypto.SecretKey;
 
@@ -222,7 +224,40 @@ public class Peer {
 
         SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
     
-        return (SSLSocket) sslSocketFactory.createSocket("127.0.0.1", 8080);
+        List<String> ipPortPairs = readIpPortPairsFromFile("serverAddresses.txt");
+
+        for (String ipPort : ipPortPairs) {
+            String[] parts = ipPort.split(":");
+            String ip = parts[0];
+            int port = Integer.parseInt(parts[1]);
+
+            try {
+                SSLSocket socket = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+
+                // Test the connection by starting the SSL handshake
+                socket.startHandshake();
+                return socket;
+            } catch (IOException e) {
+                System.err.println("Failed to connect to " + ip + ":" + port + ", trying next...");
+            }
+        }
+
+        throw new IOException("Failed to connect to any of the specified server addresses.");
+    }
+
+    //Read server addresses from file
+    private List<String> readIpPortPairsFromFile(String fileName) throws IOException {
+        List<String> ipPortPairs = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(fileName))) {
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                ipPortPairs.add(line.trim());
+            }
+        }
+
+        return ipPortPairs;
     }
 
     //Get peer's info from the database server

@@ -1,5 +1,8 @@
 package com.peerapp;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 import javafx.fxml.FXML;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
@@ -76,8 +79,17 @@ public class LoginController {
             return;
         }
 
+        String myIp = null;
+
+        try {
+            InetAddress localHost = InetAddress.getLocalHost();
+            myIp = localHost.getHostAddress();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
         //Handle the register in database
-        String res = userDatabase.registerUser(userId, password);
+        String res = userDatabase.registerUser(userId, password, myIp);
 
         if (res.equals("OK")) {
             statusText.setText("Registration successful! Please login.");
