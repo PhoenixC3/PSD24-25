@@ -109,6 +109,59 @@ public class SSLServer {
 
             System.out.println("Server is listening on port: " + PORT);
 
+            //Crash recovery
+            try {
+                for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+                    String[] ipPort = sv.split(":");
+                    String ip = ipPort[0];
+                    int port = Integer.parseInt(ipPort[1]);
+            
+                    KeyStore trustStore = KeyStore.getInstance("JKS");
+                    try (FileInputStream keystoreStream = new FileInputStream("truststores/server_truststore.jks")) {
+                        trustStore.load(keystoreStream, "serverpass".toCharArray());
+                    }
+            
+                    // Get the server certificate
+                    X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+            
+                    // Store the server's certificate as trusted by default in the user's truststore
+                    trustStore.setCertificateEntry(sv, server_cert);
+            
+                    // Save the truststore file in the folder
+                    try (FileOutputStream fos = new FileOutputStream("truststores/server_truststore.jks")) {
+                        trustStore.store(fos, "serverpass".toCharArray());
+                    }
+            
+                    TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                    trustManagerFactory.init(trustStore);
+            
+                    SSLContext sslContextSv = SSLContext.getInstance("TLS");
+                    sslContextSv.init(null, trustManagerFactory.getTrustManagers(), null);
+            
+                    SSLSocketFactory sslSocketFactory = sslContextSv.getSocketFactory();
+    
+                    SSLSocket sock = null;
+                    ObjectOutputStream out = null;
+            
+                    try {
+                        sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                        out = new ObjectOutputStream(sock.getOutputStream());
+                            
+                        System.out.println("Asking for help: " + ip + ":" + port);
+    
+                        out.writeObject("IMBACK");
+                        out.flush();
+
+                        break;
+            
+                    } catch (IOException e) {
+                        System.out.println("Failed to synchronize with server or not crashed: " + ip + ":" + port);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
             //Listen for connections
             while (true) {
                 try {
@@ -124,6 +177,34 @@ public class SSLServer {
         } finally {
             close();
         }
+    }
+
+    //Load a certificate from a file
+    private static X509Certificate loadCertificate(String certFilePath) throws Exception {
+        try (FileInputStream certInput = new FileInputStream(certFilePath)) {
+            CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+            return (X509Certificate) certFactory.generateCertificate(certInput);
+        } catch (CertificateException e) {
+            throw new Exception("Failed to load certificate: " + e.getMessage(), e);
+        }
+    }
+
+    //Read server addresses from file
+    private static List<String> readIpPortPairsFromFile(String fileName) throws IOException {
+        List<String> ipPortPairs = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(fileName))) {
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                ipPortPairs.add(line.trim());
+            }
+        }
+
+        ipPortPairs.remove(InetAddress.getLocalHost().getHostAddress() + ":" + PORT);
+        ipPortPairs.remove("localhost:" + PORT);
+
+        return ipPortPairs;
     }
 
     //Connect to the database
@@ -180,6 +261,12 @@ class ClientHandler implements Runnable {
                     
                     if (clientMessage != null) {
                         switch (clientMessage) {
+                            case "IMBACK":
+                                //Synchronize with the server that died
+                                synchronizeDB();
+
+                                break;
+
                             case "SYNC":
                                 //Receive the database file
                                 receiveFile(in, DB_FILE);
@@ -236,7 +323,7 @@ class ClientHandler implements Runnable {
 
                                         System.out.println("Message placeholder saved.");
 
-                                        sychronizeDB();
+                                        synchronizeDB();
 
                                     } catch (Exception e) {
                                         e.printStackTrace();
@@ -376,7 +463,7 @@ class ClientHandler implements Runnable {
 
                                     System.out.println("Messages saved.");
 
-                                    sychronizeDB();
+                                    synchronizeDB();
 
                                 } catch (Exception e) {
                                     e.printStackTrace();
@@ -482,7 +569,7 @@ class ClientHandler implements Runnable {
                                         System.out.println("No messages found for user: " + peerLoad);
                                     }
 
-                                    sychronizeDB();
+                                    synchronizeDB();
                             
                                 } catch (Exception e) {
                                     e.printStackTrace();
@@ -629,7 +716,7 @@ class ClientHandler implements Runnable {
 
                                     System.out.println("Offline messages saved.");
 
-                                    sychronizeDB();
+                                    synchronizeDB();
 
                                 } catch (Exception e) {
                                     e.printStackTrace();
@@ -718,7 +805,7 @@ class ClientHandler implements Runnable {
                                         System.out.println("No offline messages found for user: " + peerLoadOff);
                                     }
 
-                                    sychronizeDB();
+                                    synchronizeDB();
                             
                                 } catch (Exception e) {
                                     e.printStackTrace();
@@ -779,7 +866,7 @@ class ClientHandler implements Runnable {
         }
     }
 
-    private void sychronizeDB() {
+    private void synchronizeDB() {
         try {
             for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
                 String[] ipPort = sv.split(":");
