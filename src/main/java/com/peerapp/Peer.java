@@ -39,10 +39,7 @@ public class Peer {
         this.PORT = port;
         this.peerController = peerController;
 
-        //Set up connection to server
-        this.dbServer = contactServer();
-        this.oosServer = new ObjectOutputStream(dbServer.getOutputStream());
-        this.oisServer = new ObjectInputStream(dbServer.getInputStream());
+        refreshServer();
 
         //Set up our receiving socket
         this.serverSocket = createServerSocket();
@@ -53,6 +50,17 @@ public class Peer {
 
     public String getUserId() {
         return userId;
+    }
+
+    private void refreshServer() {
+        try {
+            //Set up connection to server
+            this.dbServer = contactServer();
+            this.oosServer = new ObjectOutputStream(dbServer.getOutputStream());
+            this.oisServer = new ObjectInputStream(dbServer.getInputStream());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     //Create our SSL/TLS socket for receiving (Peer server)
@@ -130,6 +138,8 @@ public class Peer {
         
                 Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv);
 
+                refreshServer();
+
                 try {
 
                     oosServer.writeObject("ADDOFFLINE");
@@ -165,6 +175,8 @@ public class Peer {
             try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
                 trustStore.load(trustStoreInput, password.toCharArray());
             }
+
+            refreshServer();
 
             //Get peer data
             oosServer.writeObject("GETPEER");
@@ -262,6 +274,8 @@ public class Peer {
 
     //Get peer's info from the database server
     public void getPeerInfo(String username) {
+        refreshServer();
+
         if (username.equals(userId)) {
             //Can't send a message to yourself
             peerController.updatePeerList(null);
@@ -306,6 +320,8 @@ public class Peer {
 
     //Get the messages we received while offline and the unread counts (by conversation)
     public HashMap<String, LinkedList<Message>> loadOfflineMessageHistory() {
+        refreshServer();
+
         try {
 
             oosServer.writeObject("LOADOFFLINE");
@@ -360,6 +376,8 @@ public class Peer {
 
         @Override
         public void run() {
+            refreshServer();
+            
             try (ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
                 ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
                 
@@ -442,6 +460,8 @@ public class Peer {
 
     //Save the history of messages (on closing the app)
     public void saveMessageHistory(HashMap<String, LinkedList<String>> convs, HashMap<String, Integer> unread) {
+        refreshServer();
+
         try {
 
             oosServer.writeObject("SAVEMSGS");
@@ -464,6 +484,8 @@ public class Peer {
     
     //Load the history of messages and the unread counts
     public HashMap<String, LinkedList<String>> loadMessageHistory() {
+        refreshServer();
+
         try {
 
             oosServer.writeObject("LOADMSGS");

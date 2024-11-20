@@ -809,10 +809,16 @@ class ClientHandler implements Runnable {
                 sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
         
                 SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+                SSLSocket sock = null;
+                ObjectOutputStream out = null;
         
-                try (SSLSocket sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
-                     ObjectOutputStream out = new ObjectOutputStream(sock.getOutputStream());) {
-        
+                try {
+                    sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                    out = new ObjectOutputStream(sock.getOutputStream());
+                        
+                    System.out.println("Synchronizing with server: " + ip + ":" + port);
+
                     out.writeObject("SYNC");
                     out.flush();
         
@@ -835,8 +841,11 @@ class ClientHandler implements Runnable {
         // Send the file size first
         out.writeLong(fileSize);
         out.flush();
+
+        BufferedInputStream bis = null;
     
-        try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
+        try {
+            bis = new BufferedInputStream(new FileInputStream(file));
             byte[] buffer = new byte[4096];
             int bytesRead;
             while ((bytesRead = bis.read(buffer)) != -1) {
@@ -844,14 +853,17 @@ class ClientHandler implements Runnable {
             }
 
             out.flush();
-            System.out.println("File sent successfully.");
+            System.out.println("DB File sent successfully.");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public void receiveFile(ObjectInputStream in, String destPath) throws IOException {
-        try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+        BufferedOutputStream bos = null;
+
+        try {
+            bos = new BufferedOutputStream(new FileOutputStream(destPath));
             long fileSize = in.readLong();
             byte[] buffer = new byte[4096];
             int bytesRead;
@@ -863,7 +875,7 @@ class ClientHandler implements Runnable {
             }
             
             bos.flush();
-            System.out.println("File received successfully.");
+            System.out.println("DB File received successfully.");
         } catch (SocketException e) {
             e.printStackTrace();
         } catch (IOException e) {
