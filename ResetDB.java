@@ -8,9 +8,6 @@ public class ResetDB {
         // Define paths
         String keystoresPath = "keystores";
         String truststoresPath = "truststores";
-        String peersDbPath1 = "peers8080.db";
-        String peersDbPath2 = "peers8081.db";
-        String peersDbPath3 = "peers8082.db";
 
         // Define files to exclude
         String excludeKeystore = "server_keystore.jks";
@@ -24,9 +21,7 @@ public class ResetDB {
         deleteFilesInDirectoryExcept(truststoresPath, excludeTruststore1, excludeTruststore2);
 
         // Delete peers.db if it exists
-        deleteFile(peersDbPath1);
-        deleteFile(peersDbPath2);
-        deleteFile(peersDbPath3);
+        deleteAllDbFiles();
     }
 
     /**
@@ -78,6 +73,29 @@ public class ResetDB {
             }
         } else {
             System.out.println("File does not exist: " + filePath);
+        }
+    }
+
+    // Method to delete all .db files in the current working directory
+    private static void deleteAllDbFiles() {
+        Path currentWorkingDir = Paths.get("").toAbsolutePath();
+        
+        // Check if directory exists
+        if (Files.exists(currentWorkingDir) && Files.isDirectory(currentWorkingDir)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(currentWorkingDir)) {
+                for (Path entry : stream) {
+                    String fileName = entry.getFileName().toString();
+
+                    if (fileName.endsWith(".db") && Files.isRegularFile(entry)) {
+                        System.out.println("Deleting file: " + entry);
+                        Files.delete(entry);
+                    }
+                }
+            } catch (IOException e) {
+                System.err.println("Error cleaning up directory: " + e.getMessage());
+            }
+        } else {
+            System.out.println("Directory does not exist");
         }
     }
 }

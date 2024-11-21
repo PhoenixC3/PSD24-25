@@ -1,6 +1,8 @@
 package com.peerapp;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
@@ -10,14 +12,17 @@ import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 import java.net.BindException;
 import java.net.ServerSocket;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -47,7 +52,7 @@ public class DatabaseUtil {
 
         try {
             //Create socket to communicate with databse server
-            socket = createServerSocket(username, password);
+            socket = createGeneralServerSocket();
 
             if (socket == null) {
                 return -1;
@@ -73,6 +78,24 @@ public class DatabaseUtil {
             if(res.equals("OK")) {
                 //Correct user
                 int port = (int) ois.readObject();
+
+                if (!isKeystorePresent(username)) {
+                    try {
+                        List<ShamirUtil.Share> shares = recoverShares(username, password);
+                        byte[] recoveredKeyBytes = ShamirUtil.reconstructSecret(shares);
+        
+                        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(recoveredKeyBytes);
+                        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+                        // ! AQUI
+                        System.out.println(recoveredKeyBytes);
+                        
+                        recoverKeystoreAndTruststore(username, password, keyFactory.generatePrivate(keySpec));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
                 return port;
             }
             else if(res.equals("WRONG")) {
@@ -96,6 +119,11 @@ public class DatabaseUtil {
                 e.printStackTrace();
             }
         }
+    }
+
+    private boolean isKeystorePresent(String username) {
+        File keystoreFile = new File("keystores/" + username + "_keystore.jks");
+        return keystoreFile.exists() && keystoreFile.isFile();
     }
 
     //User registration
@@ -151,6 +179,11 @@ public class DatabaseUtil {
             //Send user parameters to be saved in the database
             oos = new ObjectOutputStream(socket.getOutputStream());
             ois = new ObjectInputStream(socket.getInputStream());
+
+            //Secret Sharing in private key
+            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + username + "_keystore.jks", password, username, password);
+            List<ShamirUtil.Share> shares = ShamirUtil.splitSecret(privKey.getEncoded(), readIpPortPairsFromFile("serverAddresses.txt").size(), (readIpPortPairsFromFile("serverAddresses.txt").size() / 2));
+            distributeShares(oos, shares, username, password);
 
             oos.writeObject("REGISTER");
             oos.flush();
@@ -320,7 +353,7 @@ public class DatabaseUtil {
             
             //Add user private key to keystore
             keyStore.setKeyEntry(username, keyPair.getPrivate(), password.toCharArray(), new Certificate[]{cert});
-            
+
             //Save the keystore file in the folder
             try (FileOutputStream fos = new FileOutputStream("keystores/" + username + "_keystore.jks")) {
                 keyStore.store(fos, password.toCharArray());
@@ -347,6 +380,195 @@ public class DatabaseUtil {
             e.printStackTrace();
             return null;
         }
+    }
+
+    //Create keystore and truststore for user and get their certificate (public key)
+    private void recoverKeystoreAndTruststore(String username, String password, PrivateKey recoveredKey) {
+        try {
+            byte[] peerCert = null;
+            try {
+                SSLSocket generalSocket = createGeneralServerSocket();
+                ObjectOutputStream genOos = new ObjectOutputStream(generalSocket.getOutputStream());
+                ObjectInputStream genOis = new ObjectInputStream(generalSocket.getInputStream());
+    
+                genOos.writeObject("GETPEER");
+                genOos.flush();
+    
+                genOos.writeObject(username);
+                genOos.flush();
+    
+                String res = (String) genOis.readObject();
+    
+                if (res.equals("OK")) {
+                    String peerIp = (String) genOis.readObject();
+                    int peerPort = (int) genOis.readObject();
+                    peerCert = (byte[]) genOis.readObject();
+                }
+    
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            //Create user keystore
+            KeyStore keyStore = KeyStore.getInstance("JKS");
+            keyStore.load(null, null);
+            X509Certificate cert = null;
+
+            CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                try (ByteArrayInputStream in = new ByteArrayInputStream(peerCert)) {
+                    cert = (X509Certificate) certFactory.generateCertificate(in);
+                }
+            
+            //Add user private key to keystore
+            keyStore.setKeyEntry(username, recoveredKey, password.toCharArray(), new Certificate[]{cert});
+
+            //Save the keystore file in the folder
+            try (FileOutputStream fos = new FileOutputStream("keystores/" + username + "_keystore.jks")) {
+                keyStore.store(fos, password.toCharArray());
+            }
+
+            //Create user truststore
+            KeyStore trustStore = KeyStore.getInstance("JKS");
+            trustStore.load(null, null);
+
+            //Get the server certificate
+            X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+
+            //Store the server's certificate as trusted by default in the user's truststore
+            trustStore.setCertificateEntry("keyServer", server_cert);
+
+            //Save the truststore file in the folder
+            try (FileOutputStream fos = new FileOutputStream("truststores/" + username + "_truststore.jks")) {
+                trustStore.store(fos, password.toCharArray());
+            }
+
+            System.out.println("Keystore and truststore recovered");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void distributeShares(ObjectOutputStream oos, List<ShamirUtil.Share> shares, String username, String password) {
+        int i = 0;
+    
+        try {
+            for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+                String[] ipPort = sv.split(":");
+                String ip = ipPort[0];
+                int port = Integer.parseInt(ipPort[1]);
+    
+                KeyStore trustStore = KeyStore.getInstance("JKS");
+                try (FileInputStream keystoreStream = new FileInputStream("truststores/" + username + "_truststore.jks")) {
+                    trustStore.load(keystoreStream, password.toCharArray());
+                }
+    
+                X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+                trustStore.setCertificateEntry(sv, server_cert);
+    
+                try (FileOutputStream fos = new FileOutputStream("truststores/" + username + "_truststore.jks")) {
+                    trustStore.store(fos, password.toCharArray());
+                }
+    
+                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                trustManagerFactory.init(trustStore);
+    
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+    
+                SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+    
+                SSLSocket sock = null;
+                ObjectOutputStream out = null;
+    
+                try {
+                    sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                    out = new ObjectOutputStream(sock.getOutputStream());
+    
+                    System.out.println("Sending share to server: " + ip + ":" + port);
+    
+                    out.writeObject("SHARE");
+                    out.flush();
+    
+                    out.writeObject(username);
+                    out.flush();
+    
+                    out.writeObject(shares.get(i));
+                    out.flush();
+    
+                    i++;
+    
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private List<ShamirUtil.Share> recoverShares(String username, String password) {
+        List<ShamirUtil.Share> ret = new ArrayList<>();
+    
+        try {
+            for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+                String[] ipPort = sv.split(":");
+                String ip = ipPort[0];
+                int port = Integer.parseInt(ipPort[1]);
+    
+                KeyStore trustStore = KeyStore.getInstance("JKS");
+                try (FileInputStream keystoreStream = new FileInputStream("truststores/general_truststore.jks")) {
+                    trustStore.load(keystoreStream, "general".toCharArray());
+                }
+    
+                X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+                trustStore.setCertificateEntry(sv, server_cert);
+    
+                try (FileOutputStream fos = new FileOutputStream("truststores/general_truststore.jks")) {
+                    trustStore.store(fos, "general".toCharArray());
+                }
+    
+                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                trustManagerFactory.init(trustStore);
+    
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+    
+                SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+    
+                SSLSocket sock = null;
+                ObjectOutputStream out = null;
+                ObjectInputStream in = null;
+    
+                try {
+                    sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                    out = new ObjectOutputStream(sock.getOutputStream());
+                    in = new ObjectInputStream(sock.getInputStream());
+    
+                    System.out.println("Asking the server for share: " + ip + ":" + port);
+    
+                    out.writeObject("GETSHARE");
+                    out.flush();
+    
+                    out.writeObject(username);
+                    out.flush();
+    
+                    ShamirUtil.Share share = (ShamirUtil.Share) in.readObject();
+    
+                    if (share.isValid()) {
+                        ret.add(share);
+                    } else {
+                        System.out.println("Invalid share received from server: " + ip + ":" + port);
+                    }
+                } catch (IOException e) {
+                    System.out.println("Failed to synchronize with server: " + ip + ":" + port);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    
+        return ret;
     }
 
     //Load a certificate from a file

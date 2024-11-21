@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 public class SSLServer {
@@ -240,6 +241,8 @@ class ClientHandler implements Runnable {
     private static Connection conn;
     private static int PORT;
 
+    private static Map<String, ShamirUtil.Share> shares = new HashMap<String, ShamirUtil.Share>();
+
     public ClientHandler(SSLSocket sslSocket, int port) {
         this.sslSocket = sslSocket;
         DB_URL = "jdbc:sqlite:peers" + port + ".db";
@@ -261,6 +264,21 @@ class ClientHandler implements Runnable {
                     
                     if (clientMessage != null) {
                         switch (clientMessage) {
+                            case "GETSHARE":
+                                String usernameGet = (String) in.readObject();
+                                ShamirUtil.Share shareGet = shares.get(usernameGet);
+
+                                out.writeObject(shareGet);
+                                out.flush();
+
+                                break;
+                            case "SHARE":
+                                String usernameShare = (String) in.readObject();
+                                ShamirUtil.Share share = (ShamirUtil.Share) in.readObject();
+                                shares.put(usernameShare, share);
+
+                                break;
+
                             case "IMBACK":
                                 //Synchronize with the server that died
                                 synchronizeDB();
