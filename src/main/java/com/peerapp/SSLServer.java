@@ -241,7 +241,7 @@ class ClientHandler implements Runnable {
     private static Connection conn;
     private static int PORT;
 
-    private static Map<String, ShamirUtil.Share> shares = new HashMap<String, ShamirUtil.Share>();
+    private static Map<String, SecretSharing.Share> shares = new HashMap<String, SecretSharing.Share>();
 
     public ClientHandler(SSLSocket sslSocket, int port) {
         this.sslSocket = sslSocket;
@@ -255,6 +255,8 @@ class ClientHandler implements Runnable {
         try (ObjectInputStream in = new ObjectInputStream(sslSocket.getInputStream());
              ObjectOutputStream out = new ObjectOutputStream(sslSocket.getOutputStream())) {
 
+            out.flush();
+
             String clientMessage;
 
             //Handle user requests until dying
@@ -266,15 +268,18 @@ class ClientHandler implements Runnable {
                         switch (clientMessage) {
                             case "GETSHARE":
                                 String usernameGet = (String) in.readObject();
-                                ShamirUtil.Share shareGet = shares.get(usernameGet);
+                                SecretSharing.Share shareGet = shares.get(usernameGet);
 
                                 out.writeObject(shareGet);
                                 out.flush();
 
+                                out.reset();
+
                                 break;
+
                             case "SHARE":
                                 String usernameShare = (String) in.readObject();
-                                ShamirUtil.Share share = (ShamirUtil.Share) in.readObject();
+                                SecretSharing.Share share = (SecretSharing.Share) in.readObject();
                                 shares.put(usernameShare, share);
 
                                 break;

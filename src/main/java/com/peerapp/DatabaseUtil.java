@@ -18,12 +18,14 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
+import java.security.KeyStore.SecretKeyEntry;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
@@ -81,16 +83,17 @@ public class DatabaseUtil {
 
                 if (!isKeystorePresent(username)) {
                     try {
-                        List<ShamirUtil.Share> shares = recoverShares(username, password);
-                        byte[] recoveredKeyBytes = ShamirUtil.reconstructSecret(shares);
-        
-                        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(recoveredKeyBytes);
-                        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                        SecretSharing.Share[] shares = recoverShares(username, password);
+                        BigInteger recoveredSecret = SecretSharing.combine(shares);
 
-                        // ! AQUI
-                        System.out.println(recoveredKeyBytes);
+                        byte[] privateKeyBytes = recoveredSecret.toByteArray();
+                        byte[] keyBytes = Base64.getDecoder().decode(privateKeyBytes);
                         
-                        recoverKeystoreAndTruststore(username, password, keyFactory.generatePrivate(keySpec));
+                        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
+                        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                        PrivateKey recoveredPrivateKey = keyFactory.generatePrivate(keySpec);
+                        
+                        recoverKeystoreAndTruststore(username, password, recoveredPrivateKey);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -182,8 +185,9 @@ public class DatabaseUtil {
 
             //Secret Sharing in private key
             PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + username + "_keystore.jks", password, username, password);
-            List<ShamirUtil.Share> shares = ShamirUtil.splitSecret(privKey.getEncoded(), readIpPortPairsFromFile("serverAddresses.txt").size(), (readIpPortPairsFromFile("serverAddresses.txt").size() / 2));
-            distributeShares(oos, shares, username, password);
+            BigInteger secret = new BigInteger(1, privKey.getEncoded());
+            SecretSharing.Share[] shares = SecretSharing.share((readIpPortPairsFromFile("serverAddresses.txt").size() / 2), readIpPortPairsFromFile("serverAddresses.txt").size(), secret);
+            distributeShares(shares, username, password);
 
             oos.writeObject("REGISTER");
             oos.flush();
@@ -448,7 +452,7 @@ public class DatabaseUtil {
         }
     }
 
-    private void distributeShares(ObjectOutputStream oos, List<ShamirUtil.Share> shares, String username, String password) {
+    private void distributeShares(SecretSharing.Share[] shares, String username, String password) {
         int i = 0;
     
         try {
@@ -483,6 +487,8 @@ public class DatabaseUtil {
                 try {
                     sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
                     out = new ObjectOutputStream(sock.getOutputStream());
+
+                    out.flush();
     
                     System.out.println("Sending share to server: " + ip + ":" + port);
     
@@ -492,8 +498,10 @@ public class DatabaseUtil {
                     out.writeObject(username);
                     out.flush();
     
-                    out.writeObject(shares.get(i));
+                    out.writeObject(shares[i]);
                     out.flush();
+
+                    out.reset();
     
                     i++;
     
@@ -506,11 +514,13 @@ public class DatabaseUtil {
         }
     }
 
-    private List<ShamirUtil.Share> recoverShares(String username, String password) {
-        List<ShamirUtil.Share> ret = new ArrayList<>();
-    
+    private SecretSharing.Share[] recoverShares(String username, String password) {
+        List<SecretSharing.Share> shareList = new ArrayList<>();
+        
         try {
-            for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+            List<String> serverAddresses = readIpPortPairsFromFile("serverAddresses.txt");
+            
+            for (String sv : serverAddresses) {
                 String[] ipPort = sv.split(":");
                 String ip = ipPort[0];
                 int port = Integer.parseInt(ipPort[1]);
@@ -552,13 +562,8 @@ public class DatabaseUtil {
                     out.writeObject(username);
                     out.flush();
     
-                    ShamirUtil.Share share = (ShamirUtil.Share) in.readObject();
-    
-                    if (share.isValid()) {
-                        ret.add(share);
-                    } else {
-                        System.out.println("Invalid share received from server: " + ip + ":" + port);
-                    }
+                    SecretSharing.Share share = (SecretSharing.Share) in.readObject();
+                    shareList.add(share);
                 } catch (IOException e) {
                     System.out.println("Failed to synchronize with server: " + ip + ":" + port);
                 }
@@ -568,7 +573,7 @@ public class DatabaseUtil {
             return null;
         }
     
-        return ret;
+        return shareList.toArray(new SecretSharing.Share[0]);
     }
 
     //Load a certificate from a file

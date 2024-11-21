@@ -74,6 +74,7 @@ public class PeerController {
         catch (Exception e) {
             e.printStackTrace();
             showError("Failed to initialize: " + e.getMessage());
+            System.exit(0);
         }
     }
 
