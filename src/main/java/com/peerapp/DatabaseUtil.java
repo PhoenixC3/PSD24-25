@@ -516,7 +516,7 @@ public class DatabaseUtil {
                     i++;
     
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    System.out.println("Failed to synchronize with server: " + ip + ":" + port);
                 }
             }
         } catch (Exception e) {
@@ -582,6 +582,14 @@ public class DatabaseUtil {
                 } catch (IOException e) {
                     System.out.println("Failed to synchronize with server: " + ip + ":" + port);
                 }
+            }
+
+            int numShares = serverAddresses.size();
+            int threshold = numShares / 2;
+
+            if (shareModList.size() < threshold || sharePrivList.size() < threshold) {
+                System.out.println("Not enough shares to reconstruct the secret");
+                System.exit(0);
             }
         } catch (Exception e) {
             e.printStackTrace();
