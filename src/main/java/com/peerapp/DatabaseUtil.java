@@ -587,8 +587,8 @@ public class DatabaseUtil {
             int numShares = serverAddresses.size();
             int threshold = numShares / 2;
 
-            if (shareModList.size() < threshold || sharePrivList.size() < threshold) {
-                System.out.println("Not enough shares to reconstruct the secret");
+            if (shareModList.size() <= threshold || sharePrivList.size() <= threshold) {
+                System.out.println("Not enough shares to reconstruct the Private Key");
                 System.exit(0);
             }
         } catch (Exception e) {
