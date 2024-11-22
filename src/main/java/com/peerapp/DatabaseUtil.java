@@ -18,14 +18,13 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
-import java.security.KeyStore.SecretKeyEntry;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.spec.RSAPrivateKeySpec;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
@@ -81,19 +80,18 @@ public class DatabaseUtil {
                 //Correct user
                 int port = (int) ois.readObject();
 
+                //Recuperar stores em caso de um meteorito cair em cima de casa
                 if (!isKeystorePresent(username)) {
                     try {
-                        SecretSharing.Share[] shares = recoverShares(username, password);
-                        BigInteger recoveredSecret = SecretSharing.combine(shares);
+                        List<List<SecretSharing.Share>> shares = recoverShares(username, password);
+                        BigInteger mod = SecretSharing.combine(shares.get(0).toArray(new SecretSharing.Share[0]));
+                        BigInteger privExp = SecretSharing.combine(shares.get(1).toArray(new SecretSharing.Share[0]));
 
-                        byte[] privateKeyBytes = recoveredSecret.toByteArray();
-                        byte[] keyBytes = Base64.getDecoder().decode(privateKeyBytes);
+                        RSAPrivateKeySpec privateKeySpec = new RSAPrivateKeySpec(mod, privExp);
+                        KeyFactory keyFactory2 = KeyFactory.getInstance("RSA");
+                        PrivateKey reconstructedPrivateKey = keyFactory2.generatePrivate(privateKeySpec);
                         
-                        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
-                        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-                        PrivateKey recoveredPrivateKey = keyFactory.generatePrivate(keySpec);
-                        
-                        recoverKeystoreAndTruststore(username, password, recoveredPrivateKey);
+                        recoverKeystoreAndTruststore(username, password, reconstructedPrivateKey);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -184,10 +182,18 @@ public class DatabaseUtil {
             ois = new ObjectInputStream(socket.getInputStream());
 
             //Secret Sharing in private key
-            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + username + "_keystore.jks", password, username, password);
-            BigInteger secret = new BigInteger(1, privKey.getEncoded());
-            SecretSharing.Share[] shares = SecretSharing.share((readIpPortPairsFromFile("serverAddresses.txt").size() / 2), readIpPortPairsFromFile("serverAddresses.txt").size(), secret);
-            distributeShares(shares, username, password);
+            RSAPrivateKey privKey = (RSAPrivateKey) EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + username + "_keystore.jks", password, username, password);
+
+            BigInteger modulus = privKey.getModulus();
+            BigInteger privateExponent = privKey.getPrivateExponent();
+
+            int numShares = readIpPortPairsFromFile("serverAddresses.txt").size();
+            int threshold = numShares / 2;
+
+            SecretSharing.Share[] sharesMod = SecretSharing.share(threshold, numShares, modulus);
+            SecretSharing.Share[] sharesPriv = SecretSharing.share(threshold, numShares, privateExponent);
+
+            distributeShares(sharesMod, sharesPriv, username, password);
 
             oos.writeObject("REGISTER");
             oos.flush();
@@ -386,7 +392,7 @@ public class DatabaseUtil {
         }
     }
 
-    //Create keystore and truststore for user and get their certificate (public key)
+    //Recover keystore and truststore for user
     private void recoverKeystoreAndTruststore(String username, String password, PrivateKey recoveredKey) {
         try {
             byte[] peerCert = null;
@@ -452,7 +458,8 @@ public class DatabaseUtil {
         }
     }
 
-    private void distributeShares(SecretSharing.Share[] shares, String username, String password) {
+    //Distribute shares to servers
+    private void distributeShares(SecretSharing.Share[] sharesMod, SecretSharing.Share[] sharesPriv, String username, String password) {
         int i = 0;
     
         try {
@@ -497,8 +504,11 @@ public class DatabaseUtil {
     
                     out.writeObject(username);
                     out.flush();
-    
-                    out.writeObject(shares[i]);
+
+                    out.writeObject(sharesMod[i]);
+                    out.flush();
+
+                    out.writeObject(sharesPriv[i]);
                     out.flush();
 
                     out.reset();
@@ -514,8 +524,11 @@ public class DatabaseUtil {
         }
     }
 
-    private SecretSharing.Share[] recoverShares(String username, String password) {
-        List<SecretSharing.Share> shareList = new ArrayList<>();
+    //Recover shares from server storage
+    private List<List<SecretSharing.Share>> recoverShares(String username, String password) {
+        List<List<SecretSharing.Share>> ret = new ArrayList<>();
+        List<SecretSharing.Share> shareModList = new ArrayList<>();
+        List<SecretSharing.Share> sharePrivList = new ArrayList<>();
         
         try {
             List<String> serverAddresses = readIpPortPairsFromFile("serverAddresses.txt");
@@ -562,8 +575,10 @@ public class DatabaseUtil {
                     out.writeObject(username);
                     out.flush();
     
-                    SecretSharing.Share share = (SecretSharing.Share) in.readObject();
-                    shareList.add(share);
+                    List<SecretSharing.Share> share = (List<SecretSharing.Share>) in.readObject();
+
+                    shareModList.add(share.get(0));
+                    sharePrivList.add(share.get(1));
                 } catch (IOException e) {
                     System.out.println("Failed to synchronize with server: " + ip + ":" + port);
                 }
@@ -572,8 +587,11 @@ public class DatabaseUtil {
             e.printStackTrace();
             return null;
         }
-    
-        return shareList.toArray(new SecretSharing.Share[0]);
+
+        ret.add(shareModList);
+        ret.add(sharePrivList);
+
+        return ret;
     }
 
     //Load a certificate from a file

@@ -241,7 +241,7 @@ class ClientHandler implements Runnable {
     private static Connection conn;
     private static int PORT;
 
-    private static Map<String, SecretSharing.Share> shares = new HashMap<String, SecretSharing.Share>();
+    private static Map<String, List<SecretSharing.Share>> shares = new HashMap<String, List<SecretSharing.Share>>();
 
     public ClientHandler(SSLSocket sslSocket, int port) {
         this.sslSocket = sslSocket;
@@ -268,7 +268,7 @@ class ClientHandler implements Runnable {
                         switch (clientMessage) {
                             case "GETSHARE":
                                 String usernameGet = (String) in.readObject();
-                                SecretSharing.Share shareGet = shares.get(usernameGet);
+                                List<SecretSharing.Share> shareGet = shares.get(usernameGet);
 
                                 out.writeObject(shareGet);
                                 out.flush();
@@ -279,8 +279,14 @@ class ClientHandler implements Runnable {
 
                             case "SHARE":
                                 String usernameShare = (String) in.readObject();
-                                SecretSharing.Share share = (SecretSharing.Share) in.readObject();
-                                shares.put(usernameShare, share);
+                                SecretSharing.Share shareMod = (SecretSharing.Share) in.readObject();
+                                SecretSharing.Share sharePriv = (SecretSharing.Share) in.readObject();
+
+                                List<SecretSharing.Share> sharesList = new ArrayList<SecretSharing.Share>();
+                                sharesList.add(shareMod);
+                                sharesList.add(sharePriv);
+
+                                shares.put(usernameShare, sharesList);
 
                                 break;
 
@@ -392,6 +398,7 @@ class ClientHandler implements Runnable {
                             
                                             if (rs.next()) {
                                                 int storedPort = rs.getInt("port");
+
                                                 out.writeObject(storedPort);
                                                 out.flush();
                                             }
@@ -585,15 +592,14 @@ class ClientHandler implements Runnable {
                                         } catch (SQLException e) {
                                             e.printStackTrace();
                                         }
+
+                                        synchronizeDB();
                                     } else {
                                         out.writeObject("NOK");
                                         out.flush();
 
                                         System.out.println("No messages found for user: " + peerLoad);
                                     }
-
-                                    synchronizeDB();
-                            
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -821,14 +827,14 @@ class ClientHandler implements Runnable {
                                         stmtLoadOff.setString(1, "offline:" + peerLoadOff);
                                         stmtLoadOff.executeUpdate();
 
+                                        synchronizeDB();
+
                                     } else {
                                         out.writeObject("NOK");
                                         out.flush();
 
                                         System.out.println("No offline messages found for user: " + peerLoadOff);
                                     }
-
-                                    synchronizeDB();
                             
                                 } catch (Exception e) {
                                     e.printStackTrace();
