@@ -899,6 +899,24 @@ class ClientHandler implements Runnable {
 
                                 break;
 
+                            case "GETGROUPMEMBERS":
+                                String topicMembers = (String) in.readObject();
+
+                                List<String> members = getGroupMembers(topicMembers);
+
+                                if (members != null) {
+                                    out.writeObject("OK");
+                                    out.flush();
+
+                                    out.writeObject(members);
+                                    out.flush();
+                                } else {
+                                    out.writeObject("NOTFOUND");
+                                    out.flush();
+                                }
+
+                                break;
+
                             default:
                                 System.out.println("Unknown command: " + clientMessage);
                                 break;
@@ -1350,6 +1368,25 @@ class ClientHandler implements Runnable {
             e.printStackTrace();
             return "ERROR";
         }
+    }
+
+    public static List<String> getGroupMembers(String topic) {
+        String sql = "SELECT members FROM groups WHERE topic = ?";
+
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, topic);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                List<String> members = deserialize(rs.getBytes("members"));
+                return members;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     private static byte[] serialize(Object obj) {

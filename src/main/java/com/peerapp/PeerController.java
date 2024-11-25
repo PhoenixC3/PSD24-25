@@ -52,11 +52,17 @@ public class PeerController {
     //To create the bubble for unread messages
     private HashMap<String, Integer> unreadMessageCounts = new HashMap<String, Integer>();
 
+    //To create the bubble for unread messages
+    private HashMap<String, Integer> unreadMessageCountsGroup = new HashMap<String, Integer>();
+
     //User that we are currently chatting with
     private String activeConversationId;
 
     //Message history
     private HashMap<String, LinkedList<String>> convs = new HashMap<String, LinkedList<String>>();
+
+    //Message history groups
+    private HashMap<String, LinkedList<String>> convsGroups = new HashMap<String, LinkedList<String>>();
 
     public void initialize(String userId, int port, String password) {
         try {
@@ -65,6 +71,7 @@ public class PeerController {
 
             configureMessageArea();
             initializeContactsList();
+            initializeGroupsList();
             initializeSearch();
             configureMessageHandling();
             configureGroupFunctions();
@@ -162,6 +169,9 @@ public class PeerController {
                     //Reset the unread message count
                     unreadMessageCounts.put(newValue, 0);
                     refreshContactsList();
+
+                    // Deselect the groups list
+                    groupsListView.getSelectionModel().clearSelection();
                 }
             }
         );
@@ -198,6 +208,81 @@ public class PeerController {
             }
         });
     }
+
+    //Configure contacts list
+    private void initializeGroupsList() {
+        
+        //On clicking another groups name we start the conversation
+        groupsListView.getSelectionModel().selectedItemProperty().addListener(
+            (observable, oldValue, newValue) -> {
+                if (newValue != null) {
+                    startConversationWithGroup(newValue);
+
+                    //Reset the unread message count
+                    unreadMessageCountsGroup.put(newValue, 0);
+                    refreshGroupsList();
+
+                    // Deselect the contacts list
+                    contactsListView.getSelectionModel().clearSelection();
+                }
+            }
+        );
+        
+        //Visual updating stuff
+        groupsListView.setCellFactory(lv -> new ListCell<String>() {
+            @Override
+            protected void updateItem(String peerId, boolean empty) {
+                super.updateItem(peerId, empty);
+                if (empty || peerId == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    HBox container = new HBox(10);
+                    container.setAlignment(Pos.CENTER_LEFT);
+                    
+                    Label peerLabel = new Label(peerId);
+                    container.getChildren().add(peerLabel);
+                    
+                    Integer unreadCount = unreadMessageCountsGroup.getOrDefault(peerId, 0);
+                    if (unreadCount > 0) {
+                        Label badge = new Label(String.valueOf(unreadCount));
+                        badge.setStyle(
+                            "-fx-background-color: #0084FF;" +
+                            "-fx-text-fill: white;" +
+                            "-fx-padding: 2 6;" +
+                            "-fx-background-radius: 10;"
+                        );
+                        container.getChildren().add(badge);
+                    }
+                    
+                    setGraphic(container);
+                }
+            }
+        });
+    }
+
+    private void startConversationWithGroup(String groupId) {
+        activeConversationId = groupId;
+        currentUserIdLabel.setText("Chatting in group: " + groupId);
+    
+        messagesVBox.getChildren().clear();
+
+        // Get the history of messages of this conversation
+        LinkedList<String> convGroups = getConversationMessagesGroups(groupId);
+
+        // Display the message history (Each message is marked to separate your sent messages from the other person's sent messages)
+        if (convGroups != null) {
+            for (String msg : convGroups) {
+                if (msg.startsWith("Me: ")) {
+                    String actualMsg = msg.substring(4);
+                    displayMessageBubble(peer.getUserId(), actualMsg, true);
+                } else {
+                    String actualMsg = msg.substring(7);
+                    displayMessageBubble(groupId, actualMsg, false);
+                }
+            }
+        }
+    }
     
     //Configure search button
     private void initializeSearch() {
@@ -210,6 +295,11 @@ public class PeerController {
     //Get (local but persistent) message history for a certain conversation
     private LinkedList<String> getConversationMessages(String recipient) {
         return convs.get(recipient);
+    }
+
+    //Get (local but persistent) message history for a certain conversation
+    private LinkedList<String> getConversationMessagesGroups(String group) {
+        return convsGroups.get(group);
     }
 
     //Add message to a conversation's history (local but persistent)
@@ -226,6 +316,23 @@ public class PeerController {
         {
             list.add(message);
             convs.put(recipient, list);
+        }
+    }
+
+    //Add message to a conversation's history (local but persistent)
+    private void addMessageToConvGroup(String message, String group) {
+        LinkedList<String> list = convsGroups.get(group);
+
+        if (list == null) {
+            list = new LinkedList<String>();
+
+            list.add(message);
+            convsGroups.put(group, list);
+        }
+        else 
+        {
+            list.add(message);
+            convsGroups.put(group, list);
         }
     }
     
@@ -309,28 +416,47 @@ public class PeerController {
         }
         
         if (!message.isEmpty()) {
-        	boolean sent = peer.sendMessage(activeConversationId, message);
-        	
-            if (sent) {
+        	boolean sent;
+
+            if (isGroupConversation(activeConversationId)) {
+                peer.sendGroupMessage(activeConversationId, message);
+
                 //Still send the message if the user is not viewing the conversation
                 messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
-                            .add(new ChatMessage(peer.getUserId(), message, true));
-                
+                .add(new ChatMessage(peer.getUserId(), message, true));
+    
                 displayMessageBubble(peer.getUserId(), message, true);
-                  
+                
                 messageField.clear();
-                updatePeerList(activeConversationId);
+            } else {
+                sent = peer.sendMessage(activeConversationId, message);
 
-                //Add message to conversation history
-                addMessageToConv("Me: " + message, activeConversationId);
-            } 
-            else {
-                addErrorMessage("Failed to send message: User does not exist");
-                messageField.clear();
+                if (sent) {
+                    //Still send the message if the user is not viewing the conversation
+                    messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
+                                .add(new ChatMessage(peer.getUserId(), message, true));
+                    
+                    displayMessageBubble(peer.getUserId(), message, true);
+                      
+                    messageField.clear();
+                    updatePeerList(activeConversationId);
+    
+                    //Add message to conversation history
+                    addMessageToConv("Me: " + message, activeConversationId);
+                } 
+                else {
+                    addErrorMessage("Failed to send message: User does not exist");
+                    messageField.clear();
+                }
             }
         } else {
         	addErrorMessage("Please enter a message.");
         }
+    }
+
+    private boolean isGroupConversation(String conversationId) {
+        // Implement logic to check if the conversationId belongs to a group
+        return groupsListView.getItems().contains(conversationId);
     }
 
     //Visual representation of the message
@@ -391,6 +517,24 @@ public class PeerController {
         });
     }
 
+    //Display received message
+    public void appendReceivedMessageGroup(String group, String content) {
+        Platform.runLater(() -> {
+            messageHistory.computeIfAbsent(group, k -> new ArrayList<>())
+                        .add(new ChatMessage(group, content, false));
+            
+            addMessageToConvGroup("Other: " + content, group);
+
+            if (activeConversationId != null && activeConversationId.equals(group)) {
+                displayMessageBubble(group, content, false);
+            } else {
+                //Unread messages bubble
+                unreadMessageCountsGroup.merge(group, 1, Integer::sum);
+                refreshGroupsList();
+            }
+        });
+    }
+
     //Count bubble but for offline messages
     public void updateOfflineMsgCount(String sender) {
         unreadMessageCounts.merge(sender, 0, Integer::sum);
@@ -399,6 +543,10 @@ public class PeerController {
     
     private void refreshContactsList() {
         contactsListView.refresh();
+    }
+
+    private void refreshGroupsList() {
+        groupsListView.refresh();
     }
 
     public void appendError(String error) {

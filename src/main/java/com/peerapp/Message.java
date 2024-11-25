@@ -9,6 +9,7 @@ public class Message implements Serializable {
     private String encryptedContent;
     private String signedMessage;
     private byte[] iv;
+    private String group;
 
     public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv) {
         this.sender = sender;
@@ -17,6 +18,17 @@ public class Message implements Serializable {
         this.signedMessage = signedMessage;
         this.encKey = encKey;
         this.iv = iv;
+        this.group = null;
+    }
+
+    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv, String group) {
+        this.sender = sender;
+        this.recipient = recipient;
+        this.encryptedContent = encryptedContent;
+        this.signedMessage = signedMessage;
+        this.encKey = encKey;
+        this.iv = iv;
+        this.group = group;
     }
 
     public String getSender() {
@@ -41,5 +53,9 @@ public class Message implements Serializable {
 
     public byte[] getIV() {
         return iv;
+    }
+
+    public String getGroup() {
+        return group;
     }
 }

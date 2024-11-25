@@ -162,6 +162,92 @@ public class Peer {
         return false;
     }
 
+    //Send a message through client socket
+    public synchronized void sendGroupMessage(String group, String content) {
+        SSLSocket socket = null;
+        ObjectOutputStream oos = null;
+
+        try {
+            oosServer.writeObject("GETGROUPMEMBERS");
+            oosServer.flush();
+
+            oosServer.writeObject(group);
+            oosServer.flush();
+
+            String res = (String) oisServer.readObject();
+
+            if (res.equals("OK")) {
+                List<String> members = (List<String>) oisServer.readObject();
+
+                for (String mem : members) {
+                    if (!mem.equals(userId)) {
+                        try {
+                            //Create the client SSL/TLS socket
+                            socket = createClientSocket(mem);
+                
+                            if (socket != null) {   
+                                //Generate a shared secret key for the message
+                                SecretKey key = EncryptionUtil.generateSecretKey();
+                                PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, mem);
+                                byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
+                        
+                                //Encrypt the message content with the secret key
+                                String[] encryptedContent = EncryptionUtil.encrypt(content, key);
+                                byte[] iv = Base64.getDecoder().decode(encryptedContent[1]);
+                        
+                                //Sign the message for integrity
+                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                                String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
+                        
+                                // Create message object
+                                Message message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, group);
+                                oos = new ObjectOutputStream(socket.getOutputStream());
+                                oos.writeObject(message);
+                                oos.flush();
+                            }
+                            // else 
+                            // {
+                            //     //The message is "sent" (to the server for offline storage) but stays in the offline messaging queue
+                            //     SecretKey key = EncryptionUtil.generateSecretKey();
+                            //     PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
+                            //     byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
+                        
+                            //     String[] encryptedContent = EncryptionUtil.encrypt(content, key);
+                            //     byte[] iv = Base64.getDecoder().decode(encryptedContent[1]);
+                        
+                            //     PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                            //     String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
+                        
+                            //     Message message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv);
+                
+                            //     refreshServer();
+                
+                            //     try {
+                
+                            //         oosServer.writeObject("ADDOFFLINE");
+                            //         oosServer.flush();
+                
+                            //         oosServer.writeObject(message);
+                            //         oosServer.flush();
+                            //     } catch (Exception e) {
+                            //         e.printStackTrace();
+                            //     }
+                
+                            //     return true;
+                
+                            // }
+                    
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     //Create the socket to communicate with the client
     private SSLSocket createClientSocket(String recipient) throws Exception {
         String ip = null;
@@ -485,63 +571,126 @@ public class Peer {
                         trustStore.load(trustStoreInput, password.toCharArray());
                     }
 
-                    if (trustStore.getCertificate(message.getSender()) == null) {
-                        // Add trusted
-                        try {
-
-                            oosServer.writeObject("GETPEER");
-                            oosServer.flush();
-                            oosServer.writeObject(message.getSender());
-                            oosServer.flush();
-
-                            String res = (String) oisServer.readObject();
-
-                            if (res.equals("OK")) {
-                                String ip = (String) oisServer.readObject();
-                                int port = (int) oisServer.readObject();
-                                byte[] cert = (byte[]) oisServer.readObject();
-
-                                CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
-                                ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
-                                X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
-
-                                trustStore.setCertificateEntry(message.getSender(), certificate);
-
-                                try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
-                                    trustStore.store(fos, password.toCharArray());
+                    if (message.getGroup() == null) {
+                        if (trustStore.getCertificate(message.getSender()) == null) {
+                            // Add trusted
+                            try {
+    
+                                oosServer.writeObject("GETPEER");
+                                oosServer.flush();
+                                oosServer.writeObject(message.getSender());
+                                oosServer.flush();
+    
+                                String res = (String) oisServer.readObject();
+    
+                                if (res.equals("OK")) {
+                                    String ip = (String) oisServer.readObject();
+                                    int port = (int) oisServer.readObject();
+                                    byte[] cert = (byte[]) oisServer.readObject();
+    
+                                    CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                                    ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
+                                    X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
+    
+                                    trustStore.setCertificateEntry(message.getSender(), certificate);
+    
+                                    try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
+                                        trustStore.store(fos, password.toCharArray());
+                                    }
                                 }
+                                else 
+                                {
+                                    notfound = true;
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
                             }
-                            else 
-                            {
-                                notfound = true;
+                        }
+    
+                        if (notfound) {
+                            javafx.application.Platform.runLater(() -> peerController.appendError("User does not exist: " + message.getSender()));
+                            System.out.println("User does not exist: " + message.getSender());
+                        }
+                        else 
+                        {
+                            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
+                        
+                            //Verify the integrity of the message
+                            if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
+                                //Decrypt the message
+                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                                SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
+    
+                                String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey, message.getIV());
+    
+                                //Send it to the controller
+                                javafx.application.Platform.runLater(() -> peerController.appendReceivedMessage(message.getSender(), decryptedContent));
+                            } else {
+                                //Integrity check failed
+                                javafx.application.Platform.runLater(() -> peerController.appendError("Integrity verification failed for message from " + message.getSender()));
+                                System.out.println("Integrity verification failed for message from " + message.getSender());
                             }
-                        } catch (Exception e) {
-                            e.printStackTrace();
                         }
                     }
-
-                    if (notfound) {
-                        javafx.application.Platform.runLater(() -> peerController.appendError("User does not exist: " + message.getSender()));
-                        System.out.println("User does not exist: " + message.getSender());
-                    }
-                    else 
-                    {
-                        PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
-                    
-                        //Verify the integrity of the message
-                        if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
-                            //Decrypt the message
-                            PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                            SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
-
-                            String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey, message.getIV());
-
-                            //Send it to the controller
-                            javafx.application.Platform.runLater(() -> peerController.appendReceivedMessage(message.getSender(), decryptedContent));
-                        } else {
-                            //Integrity check failed
-                            javafx.application.Platform.runLater(() -> peerController.appendError("Integrity verification failed for message from " + message.getSender()));
-                            System.out.println("Integrity verification failed for message from " + message.getSender());
+                    else {
+                        if (trustStore.getCertificate(message.getSender()) == null) {
+                            // Add trusted
+                            try {
+    
+                                oosServer.writeObject("GETPEER");
+                                oosServer.flush();
+                                oosServer.writeObject(message.getSender());
+                                oosServer.flush();
+    
+                                String res = (String) oisServer.readObject();
+    
+                                if (res.equals("OK")) {
+                                    String ip = (String) oisServer.readObject();
+                                    int port = (int) oisServer.readObject();
+                                    byte[] cert = (byte[]) oisServer.readObject();
+    
+                                    CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                                    ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
+                                    X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
+    
+                                    trustStore.setCertificateEntry(message.getSender(), certificate);
+    
+                                    try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
+                                        trustStore.store(fos, password.toCharArray());
+                                    }
+                                }
+                                else 
+                                {
+                                    notfound = true;
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+    
+                        if (notfound) {
+                            javafx.application.Platform.runLater(() -> peerController.appendError("User does not exist: " + message.getSender()));
+                            System.out.println("User does not exist: " + message.getSender());
+                        }
+                        else 
+                        {
+                            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, message.getSender());
+                        
+                            //Verify the integrity of the message
+                            if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
+                                //Decrypt the message
+                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                                SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
+    
+                                String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey, message.getIV());
+    
+                                //Send it to the controller
+                                javafx.application.Platform.runLater(() -> peerController.appendReceivedMessageGroup(message.getGroup(), decryptedContent));
+                            } else {
+                                //Integrity check failed
+                                javafx.application.Platform.runLater(() -> peerController.appendError("Integrity verification failed for message from " + message.getSender()));
+                                System.out.println("Integrity verification failed for message from " + message.getSender());
+                            }
                         }
                     }
                 }
