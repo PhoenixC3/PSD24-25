@@ -39,11 +39,17 @@ public class SSLServer {
         "cert BLOB NOT NULL);";
 
     private static final String CREATE_MESSAGE_TABLE_SQL = 
-    "CREATE TABLE IF NOT EXISTS messages (" +
-    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-    "username TEXT NOT NULL UNIQUE, " +
-    "msgs BLOB NOT NULL, " +
-    "unread BLOB NOT NULL);";
+        "CREATE TABLE IF NOT EXISTS messages (" +
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+        "username TEXT NOT NULL UNIQUE, " +
+        "msgs BLOB NOT NULL, " +
+        "unread BLOB NOT NULL);";
+    
+    private static final String CREATE_GROUPS_TABLE_SQL = 
+        "CREATE TABLE IF NOT EXISTS groups (" +
+        "topic TEXT NOT NULL UNIQUE, " +
+        "members BLOB NOT NULL, " +
+        "msgs BLOB NOT NULL);";
 
     public static void main(String[] args) {
         Connection conn = null;
@@ -57,26 +63,16 @@ public class SSLServer {
         DB_URL = "jdbc:sqlite:peers" + PORT + ".db";
 
         try {
-            //Create peer table
+            // Create peer table
             conn = connect();
             stmt = conn.createStatement();
             stmt.execute(CREATE_PEER_TABLE_SQL);
 
-            try {
-                if (stmt != null) {
-                    stmt.close();
-                }
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
-            //Create message table
-            conn = connect();
-            stmt = conn.createStatement();
+            // Create message table
             stmt.execute(CREATE_MESSAGE_TABLE_SQL);
+
+            // Create groups table
+            stmt.execute(CREATE_GROUPS_TABLE_SQL);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -855,6 +851,53 @@ class ClientHandler implements Runnable {
                                 }
                                 
                                 break;
+                            
+                            case "CREATEGROUP":
+                                String topic = (String) in.readObject();
+                                String usernameCreateGroup = (String) in.readObject();
+
+                                String resCreateGroup = createGroup(topic);
+
+                                if (resCreateGroup.equals("OK")) {
+                                    out.writeObject("OK");
+                                    out.flush();
+
+                                    joinGroup(topic, usernameCreateGroup);
+                                } else if (resCreateGroup.equals("EXISTS")) {
+                                    out.writeObject("EXISTS");
+                                    out.flush();
+                                } else {
+                                    out.writeObject("ERROR");
+                                    out.flush();
+                                }
+
+                                synchronizeDB();
+                            
+                                break;
+
+                            case "JOINGROUP":
+                                String topicJoin = (String) in.readObject();
+                                String usernameJoin = (String) in.readObject();
+
+                                String resJoinGroup = joinGroup(topicJoin, usernameJoin);
+
+                                if (resJoinGroup.equals("OK")) {
+                                    out.writeObject("OK");
+                                    out.flush();
+                                } else if (resJoinGroup.equals("NOTFOUND")) {
+                                    out.writeObject("NOTFOUND");
+                                    out.flush();
+                                } else if (resJoinGroup.equals("ALREADYIN")) {
+                                    out.writeObject("ALREADYIN");
+                                    out.flush();
+                                } else {
+                                    out.writeObject("ERROR");
+                                    out.flush();
+                                }
+
+                                synchronizeDB();
+
+                                break;
 
                             default:
                                 System.out.println("Unknown command: " + clientMessage);
@@ -1236,6 +1279,98 @@ class ClientHandler implements Runnable {
         }
 
         return cert;
+    }
+
+    public static String createGroup(String topic) {
+        //See if already exists
+        String sql = "SELECT topic FROM groups WHERE topic = ?";
+
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, topic);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                return "EXISTS";
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "ERROR";
+        }
+
+        //Create the group
+        sql = "INSERT INTO groups(topic, members, msgs) VALUES(?, ?, ?)";
+
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, topic);
+            pstmt.setBytes(2, serialize(new ArrayList<String>()));
+            pstmt.setBytes(3, serialize(new ArrayList<String>()));
+            pstmt.executeUpdate();
+
+            return "OK";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "ERROR";
+        }
+    }
+
+    public static String joinGroup(String topic, String member) {
+        String sql = "SELECT members FROM groups WHERE topic = ?";
+
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, topic);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                List<String> members = deserialize(rs.getBytes("members"));
+
+                if (members.contains(member)) {
+                    return "ALREADYIN";
+                }
+
+                members.add(member);
+
+                String updateSql = "UPDATE groups SET members = ? WHERE topic = ?";
+
+                try (PreparedStatement updatePstmt = conn.prepareStatement(updateSql)) {
+                    updatePstmt.setBytes(1, serialize(members));
+                    updatePstmt.setString(2, topic);
+                    updatePstmt.executeUpdate();
+                }
+
+                return "OK";
+            }
+            else {
+                return "NOTFOUND";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "ERROR";
+        }
+    }
+
+    private static byte[] serialize(Object obj) {
+        try (ByteArrayOutputStream b = new ByteArrayOutputStream();
+             ObjectOutputStream o = new ObjectOutputStream(b)) {
+            o.writeObject(obj);
+            return b.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    private static <T> T deserialize(byte[] bytes) {
+        try (ByteArrayInputStream b = new ByteArrayInputStream(bytes);
+             ObjectInputStream o = new ObjectInputStream(b)) {
+            return (T) o.readObject();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }
 

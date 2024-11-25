@@ -32,6 +32,11 @@ public class PeerController {
     @FXML private ProgressIndicator searchProgress;
     @FXML private Label searchStatusLabel;
     @FXML private Button searchButton;
+    @FXML private Button createGroupButton;
+    @FXML private Button joinGroupButton;
+    @FXML private ListView<String> groupsListView;
+    @FXML private TextField topicField;
+    @FXML private Label groupStatusLabel;
 
     private Peer peer;
 
@@ -62,6 +67,7 @@ public class PeerController {
             initializeContactsList();
             initializeSearch();
             configureMessageHandling();
+            configureGroupFunctions();
             getMessages();
             getMessageCounts();
 
@@ -76,6 +82,37 @@ public class PeerController {
             showError("Failed to initialize: " + e.getMessage());
             System.exit(0);
         }
+    }
+
+    private void configureGroupFunctions() {
+        createGroupButton.setOnAction(event -> createGroup());
+        joinGroupButton.setOnAction(event -> joinGroup());
+    }
+
+    private void createGroup() {
+        String groupTopic = topicField.getText();
+
+        if (groupTopic.isEmpty()) {
+            showErrorGroup("Group topic cannot be empty.");
+            return;
+        }
+
+        peer.createGroup(groupTopic);
+    }
+
+    private void joinGroup() {
+        String groupTopic = topicField.getText();
+
+        if (groupTopic.isEmpty()) {
+            showErrorGroup("Group topic cannot be empty.");
+            return;
+        }
+
+        peer.joinGroup(groupTopic);
+    }
+
+    public void updateGroupList(String topic) {
+        Platform.runLater(() -> groupsListView.getItems().add(topic));
     }
 
     //Get message history (persistent) and fill the left side contact history list
@@ -368,10 +405,30 @@ public class PeerController {
         Platform.runLater(() -> addErrorMessage(error));
     }
 
+    public void appendErrorGroup(String error) {
+        Platform.runLater(() -> addErrorMessageGroup(error));
+    }
+
     private void addErrorMessage(String error) {
         Label errorLabel = new Label(error);
         errorLabel.setStyle("-fx-text-fill: red;");
         messagesVBox.getChildren().add(errorLabel);
+
+        // Clear the error message after 3 seconds
+        PauseTransition pause = new PauseTransition(javafx.util.Duration.seconds(3));
+        pause.setOnFinished(event -> messagesVBox.getChildren().remove(errorLabel));
+        pause.play();
+    }
+
+    private void addErrorMessageGroup(String error) {
+        groupStatusLabel.setStyle("-fx-text-fill: red;");
+        groupStatusLabel.setText(error);
+        groupStatusLabel.setVisible(true);
+
+        // Clear the error message after 3 seconds
+        PauseTransition pause = new PauseTransition(javafx.util.Duration.seconds(3));
+        pause.setOnFinished(event -> groupStatusLabel.setVisible(false));
+        pause.play();
     }
     
     private void showError(String error) {
@@ -380,6 +437,25 @@ public class PeerController {
             searchStatusLabel.setText("Error: " + error);
             searchStatusLabel.setStyle("-fx-text-fill: red;");
             searchStatusLabel.setVisible(true);
+
+            // Clear the error message after 3 seconds
+            PauseTransition pause = new PauseTransition(javafx.util.Duration.seconds(3));
+            pause.setOnFinished(event -> searchStatusLabel.setVisible(false));
+            pause.play();
+        });
+    }
+
+    private void showErrorGroup(String error) {
+        Platform.runLater(() -> {
+            searchProgress.setVisible(false);
+            groupStatusLabel.setText("Error: " + error);
+            groupStatusLabel.setStyle("-fx-text-fill: red;");
+            groupStatusLabel.setVisible(true);
+
+            // Clear the error message after 3 seconds
+            PauseTransition pause = new PauseTransition(javafx.util.Duration.seconds(3));
+            pause.setOnFinished(event -> groupStatusLabel.setVisible(false));
+            pause.play();
         });
     }
 

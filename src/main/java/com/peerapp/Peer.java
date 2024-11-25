@@ -318,6 +318,99 @@ public class Peer {
         }
     }
 
+    //Create a group chat
+    public void createGroup(String groupTopic) {
+        refreshServer();
+
+        try {
+            //Ask the server to create the group
+            oosServer.writeObject("CREATEGROUP");
+            oosServer.flush();
+
+            oosServer.writeObject(groupTopic);
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            String status = (String) oisServer.readObject();
+
+            if (status.equals("OK")) {
+                //Send it to the controller
+                Platform.runLater(() -> {
+                    peerController.updateGroupList(groupTopic);
+                });
+            }
+            else if (status.equals("EXISTS"))
+            {
+                //Group already exists
+                Platform.runLater(() -> {
+                    peerController.appendErrorGroup("Group already exists");
+                });
+            } else {
+                //Error creating group
+                Platform.runLater(() -> {
+                    peerController.appendErrorGroup("Error creating group");
+                });
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+
+            Platform.runLater(() -> {
+                peerController.appendErrorGroup("Error creating group: " + e.getMessage());
+            });
+        }
+    }
+
+    // Join a group chat
+    public void joinGroup(String groupTopic) {
+        refreshServer();
+
+        try {
+            // Ask the server to join the group
+            oosServer.writeObject("JOINGROUP");
+            oosServer.flush();
+
+            oosServer.writeObject(groupTopic);
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            String status = (String) oisServer.readObject();
+
+            if (status.equals("OK")) {
+                // Successfully joined the group
+                Platform.runLater(() -> {
+                    peerController.updateGroupList(groupTopic);
+                });
+            } else if (status.equals("NOTFOUND")) {
+                // Group does not exist
+                Platform.runLater(() -> {
+                    peerController.appendErrorGroup("Group does not exist");
+                });
+            } else if (status.equals("ALREADYIN")) {
+                // Group does not exist
+                Platform.runLater(() -> {
+                    peerController.appendErrorGroup("You are already in this group");
+                });
+            } else {
+                // Error joining group
+                Platform.runLater(() -> {
+                    peerController.appendErrorGroup("Error joining group");
+                });
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+
+            Platform.runLater(() -> {
+                peerController.appendErrorGroup("Error joining group: " + e.getMessage());
+            });
+        }
+    }
+
     //Get the messages we received while offline and the unread counts (by conversation)
     public HashMap<String, LinkedList<Message>> loadOfflineMessageHistory() {
         refreshServer();
