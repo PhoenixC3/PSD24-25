@@ -36,7 +36,8 @@
             <Label text="Groups" style="-fx-font-weight: bold;"/>
             <TextField fx:id="topicField" promptText="Group Topic"/>
             <Button fx:id="createGroupButton" text="Create Group"/>
-            <Button fx:id="joinGroupButton" text="Join Group"/>
+            <TextField fx:id="memberField" promptText="Member to Add" visible="false"/>
+            <Button fx:id="addMemberButton" text="Add Member to Group" visible="false"/>
             <Label fx:id="groupStatusLabel" 
                         visible="false" 
                         wrapText="true"/>

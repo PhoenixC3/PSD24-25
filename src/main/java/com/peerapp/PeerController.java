@@ -33,10 +33,11 @@ public class PeerController {
     @FXML private Label searchStatusLabel;
     @FXML private Button searchButton;
     @FXML private Button createGroupButton;
-    @FXML private Button joinGroupButton;
     @FXML private ListView<String> groupsListView;
     @FXML private TextField topicField;
+    @FXML private TextField memberField;
     @FXML private Label groupStatusLabel;
+    @FXML private Button addMemberButton;
 
     private Peer peer;
 
@@ -48,6 +49,9 @@ public class PeerController {
 
     //To use when unread messages
     private Map<String, List<ChatMessage>> messageHistory = new HashMap<>();
+
+    //To use when unread messages
+    private Map<String, List<ChatMessage>> messageHistoryGroups = new HashMap<>();
 
     //To create the bubble for unread messages
     private HashMap<String, Integer> unreadMessageCounts = new HashMap<String, Integer>();
@@ -63,6 +67,9 @@ public class PeerController {
 
     //Message history groups
     private HashMap<String, LinkedList<String>> convsGroups = new HashMap<String, LinkedList<String>>();
+
+    //Groups that the user has created
+    private List<String> createdGroups = new ArrayList<>();
 
     public void initialize(String userId, int port, String password) {
         try {
@@ -93,7 +100,7 @@ public class PeerController {
 
     private void configureGroupFunctions() {
         createGroupButton.setOnAction(event -> createGroup());
-        joinGroupButton.setOnAction(event -> joinGroup());
+        addMemberButton.setOnAction(event -> addToGroup());
     }
 
     private void createGroup() {
@@ -105,21 +112,32 @@ public class PeerController {
         }
 
         peer.createGroup(groupTopic);
+        createdGroups.add(groupTopic);
+        topicField.clear();
     }
 
-    private void joinGroup() {
+    private void addToGroup() {
         String groupTopic = topicField.getText();
+        String member = memberField.getText();
 
         if (groupTopic.isEmpty()) {
             showErrorGroup("Group topic cannot be empty.");
             return;
         }
 
-        peer.joinGroup(groupTopic);
+        peer.addMemberToGroup(groupTopic, member);
+        topicField.clear();
+        memberField.clear();
     }
 
     public void updateGroupList(String topic) {
         Platform.runLater(() -> groupsListView.getItems().add(topic));
+    }
+
+    //Group leader
+    public void setGroupLeader(boolean isLeader) {
+        addMemberButton.setVisible(isLeader);
+        memberField.setVisible(isLeader);
     }
 
     //Get message history (persistent) and fill the left side contact history list
@@ -172,6 +190,8 @@ public class PeerController {
 
                     // Deselect the groups list
                     groupsListView.getSelectionModel().clearSelection();
+
+                    setGroupLeader(false);
                 }
             }
         );
@@ -224,6 +244,16 @@ public class PeerController {
 
                     // Deselect the contacts list
                     contactsListView.getSelectionModel().clearSelection();
+
+                    // Show or hide the member field and button based on group ownership
+                    boolean isGroupCreator = createdGroups.contains(newValue);
+
+                    if (isGroupCreator) {
+                        setGroupLeader(true);
+                    }
+                    else {
+                        setGroupLeader(false);
+                    }
                 }
             }
         );
@@ -422,12 +452,15 @@ public class PeerController {
                 peer.sendGroupMessage(activeConversationId, message);
 
                 //Still send the message if the user is not viewing the conversation
-                messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
+                messageHistoryGroups.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
                 .add(new ChatMessage(peer.getUserId(), message, true));
     
                 displayMessageBubble(peer.getUserId(), message, true);
                 
                 messageField.clear();
+
+                //Add message to conversation history
+                addMessageToConvGroup("Me: " + message, activeConversationId);
             } else {
                 sent = peer.sendMessage(activeConversationId, message);
 
@@ -439,7 +472,6 @@ public class PeerController {
                     displayMessageBubble(peer.getUserId(), message, true);
                       
                     messageField.clear();
-                    updatePeerList(activeConversationId);
     
                     //Add message to conversation history
                     addMessageToConv("Me: " + message, activeConversationId);
@@ -518,15 +550,15 @@ public class PeerController {
     }
 
     //Display received message
-    public void appendReceivedMessageGroup(String group, String content) {
+    public void appendReceivedMessageGroup(String group, String sender, String content) {
         Platform.runLater(() -> {
-            messageHistory.computeIfAbsent(group, k -> new ArrayList<>())
-                        .add(new ChatMessage(group, content, false));
+            messageHistoryGroups.computeIfAbsent(group, k -> new ArrayList<>())
+                        .add(new ChatMessage(sender, content, false));
             
             addMessageToConvGroup("Other: " + content, group);
 
             if (activeConversationId != null && activeConversationId.equals(group)) {
-                displayMessageBubble(group, content, false);
+                displayMessageBubble(sender, content, false);
             } else {
                 //Unread messages bubble
                 unreadMessageCountsGroup.merge(group, 1, Integer::sum);
