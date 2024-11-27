@@ -404,6 +404,45 @@ public class Peer {
         }
     }
 
+    public void saveConnectedPeers(List<String> peers) {
+        refreshServer();
+
+        try {
+            oosServer.writeObject("SAVEPEERSORDER");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            oosServer.writeObject(peers);
+            oosServer.flush();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public List<String> getConnectedPeers() {
+        refreshServer();
+
+        try {
+            oosServer.writeObject("GETALLPEERS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            List<String> peers = (List<String>) oisServer.readObject();
+
+            peers.remove(userId);
+
+            return peers;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     //Create a group chat
     public void createGroup(String groupTopic) {
         refreshServer();

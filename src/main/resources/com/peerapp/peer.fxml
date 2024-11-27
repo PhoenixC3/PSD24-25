@@ -21,6 +21,7 @@
             <Label text="Direct Messages" style="-fx-font-weight: bold;"/>
             <TextField fx:id="searchField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search contacts..."/>
             <Button fx:id="searchButton" text="Search" layoutX="50" layoutY="20"/>
+            <Button fx:id="refreshButton" text="Refresh" layoutX="50" layoutY="20"/>
             <HBox spacing="5" alignment="CENTER_LEFT">
                 <ProgressIndicator fx:id="searchProgress" 
                         visible="false" 
@@ -30,6 +31,7 @@
                         visible="false" 
                         wrapText="true"/>
             </HBox>
+            <Label text="Available Users" style="-fx-font-weight: bold;"/>
             <ListView fx:id="contactsListView" VBox.vgrow="ALWAYS"/>
             
             <!-- Group Management Section -->

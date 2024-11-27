@@ -7,6 +7,7 @@ module com.peerapp {
     requires org.bouncycastle.provider;
     requires org.bouncycastle.pkix;
     requires org.bouncycastle.util;
+    requires javafx.base;
 
     opens com.peerapp to javafx.fxml;
     exports com.peerapp;

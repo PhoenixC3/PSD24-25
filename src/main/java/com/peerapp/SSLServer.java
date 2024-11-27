@@ -48,48 +48,46 @@ public class SSLServer {
     private static final String CREATE_GROUPS_TABLE_SQL = 
         "CREATE TABLE IF NOT EXISTS groups (" +
         "topic TEXT NOT NULL UNIQUE, " +
-        "members BLOB NOT NULL, " +
-        "msgs BLOB NOT NULL);";
+        "members BLOB NOT NULL);";
+    
+    private static final String CREATE_GROUPS_MESSAGES_TABLE_SQL = 
+        "CREATE TABLE IF NOT EXISTS groupmsgs (" +
+        "topic TEXT NOT NULL UNIQUE, " +
+        "msgs BLOB NOT NULL, " +
+        "unread BLOB NOT NULL);";
 
+    private static final String CREATE_PEER_ORDER_TABLE_SQL = 
+        "CREATE TABLE IF NOT EXISTS peerorder (" +
+        "username TEXT NOT NULL UNIQUE, " +
+        "orderlist BLOB NOT NULL);";
+    
     public static void main(String[] args) {
-        Connection conn = null;
-        Statement stmt = null;
-        
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter the port number for the server: ");
-        PORT = Integer.parseInt(scanner.nextLine());
-        scanner.close();
+        initializeDatabase();
+        initializeServerSocket();
+        listenForConnections();
+    }
+    
+    private static void initializeDatabase() {
+        try (Scanner scanner = new Scanner(System.in)) {
+            System.out.print("Enter the port number for the server: ");
+            PORT = Integer.parseInt(scanner.nextLine());
+        }
 
         DB_URL = "jdbc:sqlite:peers" + PORT + ".db";
 
-        try {
-            // Create peer table
-            conn = connect();
-            stmt = conn.createStatement();
+        try (Connection conn = connect(); Statement stmt = conn.createStatement()) {
             stmt.execute(CREATE_PEER_TABLE_SQL);
-
-            // Create message table
             stmt.execute(CREATE_MESSAGE_TABLE_SQL);
-
-            // Create groups table
             stmt.execute(CREATE_GROUPS_TABLE_SQL);
+            stmt.execute(CREATE_GROUPS_MESSAGES_TABLE_SQL);
+            stmt.execute(CREATE_PEER_ORDER_TABLE_SQL);
         } catch (Exception e) {
             e.printStackTrace();
-        } finally {
-            try {
-                if (stmt != null) {
-                    stmt.close();
-                }
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
         }
-        
+    }
+
+    private static void initializeServerSocket() {
         try {
-            //Create the server socket
             KeyStore keyStore = KeyStore.getInstance("JKS");
             try (FileInputStream keyStoreInput = new FileInputStream("keystores/server_keystore.jks")) {
                 keyStore.load(keyStoreInput, "serverpass".toCharArray());
@@ -106,60 +104,57 @@ public class SSLServer {
 
             System.out.println("Server is listening on port: " + PORT);
 
-            //Crash recovery
-            try {
-                for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
-                    String[] ipPort = sv.split(":");
-                    String ip = ipPort[0];
-                    int port = Integer.parseInt(ipPort[1]);
-            
-                    KeyStore trustStore = KeyStore.getInstance("JKS");
-                    try (FileInputStream keystoreStream = new FileInputStream("truststores/server_truststore.jks")) {
-                        trustStore.load(keystoreStream, "serverpass".toCharArray());
-                    }
-            
-                    // Get the server certificate
-                    X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
-            
-                    // Store the server's certificate as trusted by default in the user's truststore
-                    trustStore.setCertificateEntry(sv, server_cert);
-            
-                    // Save the truststore file in the folder
-                    try (FileOutputStream fos = new FileOutputStream("truststores/server_truststore.jks")) {
-                        trustStore.store(fos, "serverpass".toCharArray());
-                    }
-            
-                    TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                    trustManagerFactory.init(trustStore);
-            
-                    SSLContext sslContextSv = SSLContext.getInstance("TLS");
-                    sslContextSv.init(null, trustManagerFactory.getTrustManagers(), null);
-            
-                    SSLSocketFactory sslSocketFactory = sslContextSv.getSocketFactory();
-    
-                    SSLSocket sock = null;
-                    ObjectOutputStream out = null;
-            
-                    try {
-                        sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
-                        out = new ObjectOutputStream(sock.getOutputStream());
-                            
-                        System.out.println("Asking for help: " + ip + ":" + port);
-    
-                        out.writeObject("IMBACK");
-                        out.flush();
+            crashRecovery();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-                        break;
-            
-                    } catch (IOException e) {
-                        System.out.println("Failed to synchronize with server or not crashed: " + ip + ":" + port);
-                    }
+    private static void crashRecovery() {
+        try {
+            for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+                String[] ipPort = sv.split(":");
+                String ip = ipPort[0];
+                int port = Integer.parseInt(ipPort[1]);
+
+                KeyStore trustStore = KeyStore.getInstance("JKS");
+                try (FileInputStream keystoreStream = new FileInputStream("truststores/server_truststore.jks")) {
+                    trustStore.load(keystoreStream, "serverpass".toCharArray());
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
 
-            //Listen for connections
+                X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+                trustStore.setCertificateEntry(sv, server_cert);
+
+                try (FileOutputStream fos = new FileOutputStream("truststores/server_truststore.jks")) {
+                    trustStore.store(fos, "serverpass".toCharArray());
+                }
+
+                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                trustManagerFactory.init(trustStore);
+
+                SSLContext sslContextSv = SSLContext.getInstance("TLS");
+                sslContextSv.init(null, trustManagerFactory.getTrustManagers(), null);
+
+                SSLSocketFactory sslSocketFactory = sslContextSv.getSocketFactory();
+
+                try (SSLSocket sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                     ObjectOutputStream out = new ObjectOutputStream(sock.getOutputStream())) {
+
+                    System.out.println("Asking for help: " + ip + ":" + port);
+                    out.writeObject("IMBACK");
+                    out.flush();
+                    break;
+                } catch (IOException e) {
+                    System.out.println("Failed to synchronize with server or not crashed: " + ip + ":" + port);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void listenForConnections() {
+        try {
             while (true) {
                 try {
                     SSLSocket socket = (SSLSocket) svSocket.accept();
@@ -319,26 +314,13 @@ class ClientHandler implements Runnable {
                                     String insertQueryReg = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
                                     HashMap<String, LinkedList<String>> convsReg = new HashMap<String, LinkedList<String>>();
                                     HashMap<String, Integer> unreadReg = new HashMap<String, Integer>();
-                                    byte[] mapReg = null;
-                                    byte[] mapUnreadReg = null;
 
                                     try {
                                         connReg = connect();
                                         stmtReg = conn.prepareStatement(insertQueryReg);
 
-                                        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                            ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                            outMap.writeObject(convsReg);
-                                            mapReg = byteOut.toByteArray();
-                                        }
-
-                                        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                            ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                            outMap.writeObject(unreadReg);
-                                            mapUnreadReg = byteOut.toByteArray();
-                                        }
+                                        byte[] mapReg = serialize(convsReg);
+                                        byte[] mapUnreadReg = serialize(unreadReg);
         
                                         stmtReg.setString(1, user);
                                         stmtReg.setBytes(2, mapReg);
@@ -450,27 +432,101 @@ class ClientHandler implements Runnable {
                                 }
         
                                 break;
+                            
+                            case "GETALLPEERS":
+                                String getAllUsername = (String) in.readObject();
+                                String allQuery = "SELECT orderlist FROM peerorder WHERE username = ?";
+
+                                //Save history of messages and unread message count in the database
+                                Connection getAllConn = null;
+                                PreparedStatement stmtAllCon = null;
+
+                                try {
+                                    getAllConn = connect();
+                                    stmtAllCon = getAllConn.prepareStatement(allQuery);
+
+                                    stmtAllCon.setString(1, getAllUsername);
+                            
+                                    ResultSet rsAllCon = stmtAllCon.executeQuery();
+
+                                    if (rsAllCon.next()) {
+                                        byte[] allConOrderBytes = rsAllCon.getBytes("orderlist");
+
+                                        List<String> allConOrder = (List<String>) deserialize(allConOrderBytes);
+
+                                        out.writeObject(allConOrder);
+                                        out.flush();
+                                    }
+                                    else {
+                                        out.writeObject(getAllPeerUsernames());
+                                        out.flush();
+                                    }
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmtAllCon != null) {
+                                            stmtAllCon.close();
+                                        }
+                                        if (getAllConn != null) {
+                                            getAllConn.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+        
+                                break;
+
+                            case "SAVEPEERSORDER":
+                                String peerIdSaveOrder = (String) in.readObject();
+                                List<String> saveOrder = (List<String>) in.readObject();
+
+                                byte[] saveOrderbytes = serialize(saveOrder);
+
+                                //Save history of messages and unread message count in the database
+                                Connection connSaveOrder = null;
+                                PreparedStatement stmtSaveOrder = null;
+                                String insertQuerySaveOrder = "INSERT OR REPLACE INTO peerorder (username, orderlist) VALUES (?, ?)";
+
+                                try {
+                                    connSaveOrder = connect();
+                                    stmtSaveOrder = connSaveOrder.prepareStatement(insertQuerySaveOrder);
+
+                                    stmtSaveOrder.setString(1, peerIdSaveOrder);
+                                    stmtSaveOrder.setBytes(2, saveOrderbytes);
+                            
+                                    stmtSaveOrder.executeUpdate();
+
+                                    System.out.println("Order saved.");
+
+                                    synchronizeDB();
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmtSaveOrder != null) {
+                                            stmtSaveOrder.close();
+                                        }
+                                        if (connSaveOrder != null) {
+                                            connSaveOrder.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                break;
 
                             case "SAVEMSGS":
                                 String peerId = (String) in.readObject();
                                 HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) in.readObject();
                                 HashMap<String, Integer> unreadSave = (HashMap<String, Integer>) in.readObject();
-                                byte[] map = null;
-                                byte[] mapUnread = null;
 
-                                try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                    ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                    outMap.writeObject(convs);
-                                    map = byteOut.toByteArray();
-                                }
-
-                                try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                    ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                    outMap.writeObject(unreadSave);
-                                    mapUnread = byteOut.toByteArray();
-                                }
+                                byte[] map = serialize(convs);
+                                byte[] mapUnread = serialize(unreadSave);
 
                                 //Save history of messages and unread message count in the database
                                 Connection conn = null;
@@ -489,8 +545,6 @@ class ClientHandler implements Runnable {
 
                                     System.out.println("Messages saved.");
 
-                                    synchronizeDB();
-
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -507,20 +561,86 @@ class ClientHandler implements Runnable {
                                 }
 
                                 break;
+                            
+                            case "SAVEMSGSGROUPS":
+                                String peerIdGroup = (String) in.readObject();
+                                String topicGroupSave = (String) in.readObject();
+
+                                LinkedList<String> convsGroup = (LinkedList<String>) in.readObject();
+                                int unreadSaveGroup = (int) in.readObject();
+
+                                //Save history of messages and unread message count in the database
+                                Connection connGroup = null;
+                                PreparedStatement stmtGroup = null;
+                                String selectQueryGroups = "SELECT msgs, unread FROM groupmsgs WHERE topic = ?";
+                                String insertQueryGroups = "UPDATE groupmsgs SET msgs = ? WHERE topic = ?";
+                                String insertQueryGroups2 = "UPDATE groupmsgs SET unread = ? WHERE topic = ?";
+
+                                try {
+                                    connGroup = connect();
+                                    stmtGroup = connGroup.prepareStatement(selectQueryGroups);
+
+                                    stmtGroup.setString(1, topicGroupSave);
+                            
+                                    ResultSet rs = stmtGroup.executeQuery();
+
+                                    if (rs.next()) {
+                                        byte[] mapGroup = rs.getBytes("msgs");
+                                        byte[] mapUnreadGroup = rs.getBytes("unread");
+
+                                        //Deserialize the byte array back to HashMap
+                                        HashMap<String, LinkedList<String>> convsLoadGroup = (HashMap<String, LinkedList<String>>) deserialize(mapGroup);
+
+                                        convsLoadGroup.put(peerIdGroup, convsGroup);
+
+                                        byte[] mapUpdateGroup = serialize(convsLoadGroup);
+
+                                        stmtGroup = connGroup.prepareStatement(insertQueryGroups);
+
+                                        stmtGroup.setBytes(1, mapUpdateGroup);
+                                        stmtGroup.setString(2, topicGroupSave);
+                                        stmtGroup.executeUpdate();
+
+                                        HashMap<String, Integer> unreadLoadGroup = (HashMap<String, Integer>) deserialize(mapUnreadGroup);
+
+                                        unreadLoadGroup.put(peerIdGroup, unreadSaveGroup);
+
+                                        byte[] mapUpdateUnreadGroup = serialize(unreadLoadGroup);
+
+                                        stmtGroup = connGroup.prepareStatement(insertQueryGroups2);
+                                        stmtGroup.setBytes(1, mapUpdateUnreadGroup);
+                                        stmtGroup.setString(2, topicGroupSave);
+                                        stmtGroup.executeUpdate();
+                                    }
+
+                                    System.out.println("Group messages saved.");
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmtGroup != null) {
+                                            stmtGroup.close();
+                                        }
+                                        if (connGroup != null) {
+                                            connGroup.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                synchronizeDB();
+
+                                break;
 
                             case "LOADMSGS":
                                 String peerLoad = (String) in.readObject();
-                                byte[] mapLoad = null;
-                                byte[] mapUnreadLoad = null;
                             
                                 Connection connLoad = null;
                                 PreparedStatement stmtLoad = null;
                                 ResultSet rs = null;
                                 String selectQuery = "SELECT msgs, unread FROM messages WHERE username = ?";
-
-                                //Deserialize the byte array back to HashMap
-                                HashMap<String, LinkedList<String>> convsLoad = new HashMap<String, LinkedList<String>>();
-                                HashMap<String, Integer> unreadLoad = new HashMap<String, Integer>();
                             
                                 try {
                                     connLoad = connect();
@@ -529,35 +649,22 @@ class ClientHandler implements Runnable {
                                     rs = stmtLoad.executeQuery();
                             
                                     if (rs.next()) {
-                                        mapLoad = rs.getBytes("msgs");
-                                        mapUnreadLoad = rs.getBytes("unread");
+                                        byte[] mapLoad = rs.getBytes("msgs");
+                                        byte[] mapUnreadLoad = rs.getBytes("unread");
 
-                                        //Send the message history
-                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapLoad);
-                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
-                            
-                                            convsLoad = (HashMap<String, LinkedList<String>>) inMap.readObject();
+                                        //Deserialize the byte array back to HashMap
+                                        HashMap<String, LinkedList<String>> convsLoad = (HashMap<String, LinkedList<String>>) deserialize(mapLoad);
 
-                                            out.writeObject("OK");
-                                            out.flush();
+                                        out.writeObject("OK");
+                                        out.flush();
 
-                                            out.writeObject(convsLoad);
-                                            out.flush();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                        }
+                                        out.writeObject(convsLoad);
+                                        out.flush();
 
-                                        //Send the unread message count
-                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapUnreadLoad);
-                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
-                            
-                                            unreadLoad = (HashMap<String, Integer>) inMap.readObject();
+                                        HashMap<String, Integer> unreadLoad = (HashMap<String, Integer>) deserialize(mapUnreadLoad);
 
-                                            out.writeObject(unreadLoad);
-                                            out.flush();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                        }
+                                        out.writeObject(unreadLoad);
+                                        out.flush();
 
                                         if (rs != null) {
                                             rs.close();
@@ -567,16 +674,7 @@ class ClientHandler implements Runnable {
                                             stmtLoad.close();
                                         }
 
-                                        byte[] unreadUpdateLoad = null;
-
-                                        try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                            ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                            outMap.writeObject(new HashMap<String, Integer>());
-                                            unreadUpdateLoad = byteOut.toByteArray();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                        }
+                                        byte[] unreadUpdateLoad = serialize(new HashMap<String, Integer>());
 
                                         //Delete unread count, to be updated in the next app iteration
                                         String updateQueryLoad = "UPDATE messages SET unread = ? WHERE username = ?";
@@ -618,6 +716,91 @@ class ClientHandler implements Runnable {
                                 
                                 break;
 
+                            case "LOADMSGSGROUPS":
+                                String peerLoadGroup = (String) in.readObject();
+                                String topicLoadGroup = (String) in.readObject();
+                            
+                                Connection connLoadGroup = null;
+                                PreparedStatement stmtLoadGroup = null;
+                                ResultSet rsGroup = null;
+                                String selectQueryGroup = "SELECT msgs, unread FROM groupmsgs WHERE topic = ?";
+                            
+                                try {
+                                    connLoadGroup = connect();
+                                    stmtLoadGroup = connLoadGroup.prepareStatement(selectQueryGroup);
+                                    stmtLoadGroup.setString(1, topicLoadGroup);
+                                    rsGroup = stmtLoadGroup.executeQuery();
+                            
+                                    if (rsGroup.next()) {
+                                        byte[] mapLoadGroup = rsGroup.getBytes("msgs");
+                                        byte[] mapUnreadLoadGroup = rsGroup.getBytes("unread");
+
+                                        //Deserialize the byte array back to HashMap
+                                        HashMap<String, LinkedList<String>> convsLoadGroup = (HashMap<String, LinkedList<String>>) deserialize(mapLoadGroup);
+
+                                        out.writeObject("OK");
+                                        out.flush();
+
+                                        out.writeObject(convsLoadGroup.get(peerLoadGroup));
+                                        out.flush();
+
+                                        HashMap<String, Integer> unreadLoadGroup = (HashMap<String, Integer>) deserialize(mapUnreadLoadGroup);
+
+                                        out.writeObject(unreadLoadGroup.get(peerLoadGroup));
+                                        out.flush();
+
+                                        unreadLoadGroup.put(peerLoadGroup, 0);
+
+                                        if (rsGroup != null) {
+                                            rsGroup.close();
+                                        }
+
+                                        if (stmtLoadGroup != null) {
+                                            stmtLoadGroup.close();
+                                        }
+
+                                        byte[] unreadUpdateLoadGroup = serialize(unreadLoadGroup);
+
+                                        //Delete unread count, to be updated in the next app iteration
+                                        String updateQueryLoadGroup = "UPDATE groupmsgs SET unread = ? WHERE topic = ?";
+
+                                        try {
+                                            stmtLoadGroup = connLoadGroup.prepareStatement(updateQueryLoadGroup);
+                                            stmtLoadGroup.setBytes(1, unreadUpdateLoadGroup);
+                                            stmtLoadGroup.setString(2, topicLoadGroup);
+                                        } catch (SQLException e) {
+                                            e.printStackTrace();
+                                        }
+
+                                        synchronizeDB();
+                                    } else {
+                                        out.writeObject("NOK");
+                                        out.flush();
+
+                                        System.out.println("No messages found for user: " + peerLoadGroup);
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsGroup != null) {
+                                            rsGroup.close();
+                                        }
+
+                                        if (stmtLoadGroup != null) {
+                                            stmtLoadGroup.close();
+                                        }
+
+                                        if (connLoadGroup != null) {
+                                            connLoadGroup.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                
+                                break;
+
                             case "ADDOFFLINE":
                                 Message msg = (Message) in.readObject();
                                 byte[] mapOff = null;
@@ -627,10 +810,10 @@ class ClientHandler implements Runnable {
                                 PreparedStatement stmtOff = null;
                                 ResultSet rsOff = null;
                                 String selectQueryOff = "SELECT msgs, unread FROM messages WHERE username = ?";
-                                HashMap<String, LinkedList<Message>> convsOff = null;
                                 LinkedList<Message> myMsgs = null;
-
                                 HashMap<String, Integer> unreadOff = null;
+
+                                HashMap<String, LinkedList<Message>> convsOff = null;
                                 
                                 try {
                                     connOff = connect();
@@ -641,12 +824,7 @@ class ClientHandler implements Runnable {
                                     if (rsOff.next()) {
                                         //Update the offline conversation history of the user
                                         mapOff = rsOff.getBytes("msgs");
-
-                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(mapOff);
-                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
-                            
-                                            convsOff = (HashMap<String, LinkedList<Message>>) inMap.readObject();
-                                        }
+                                        convsOff = (HashMap<String, LinkedList<Message>>) deserialize(mapOff);
 
                                         myMsgs = convsOff.get(msg.getSender());
 
@@ -663,12 +841,7 @@ class ClientHandler implements Runnable {
 
                                         //Update the offline unread message count of the user
                                         unreadMapOff = rsOff.getBytes("unread");
-
-                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(unreadMapOff);
-                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
-                            
-                                            unreadOff = (HashMap<String, Integer>) inMap.readObject();
-                                        }
+                                        unreadOff = (HashMap<String, Integer>) deserialize(unreadMapOff);
 
                                         int count = 0;
 
@@ -712,23 +885,8 @@ class ClientHandler implements Runnable {
                                 String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
 
                                 try {
-                                    byte[] mapInsert = null;
-
-                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                        outMap.writeObject(convsOff);
-                                        mapInsert = byteOut.toByteArray();
-                                    }
-
-                                    byte[] unreadInsert = null;
-
-                                    try (ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-                                        ObjectOutputStream outMap = new ObjectOutputStream(byteOut)) {
-
-                                        outMap.writeObject(unreadOff);
-                                        unreadInsert = byteOut.toByteArray();
-                                    }
+                                    byte[] mapInsert = serialize(convsOff);
+                                    byte[] unreadInsert = serialize(unreadOff);
 
                                     connOff = connect();
                                     stmtOff = connOff.prepareStatement(insertQueryOff);
@@ -783,33 +941,21 @@ class ClientHandler implements Runnable {
                                         getMapLoadOff = rsLoadOff.getBytes("msgs");
                             
                                         //Deserialize the byte array back to HashMap
-                                        HashMap<String, LinkedList<Message>> convsLoadOff;
+                                        HashMap<String, LinkedList<Message>> convsLoadOff = (HashMap<String, LinkedList<Message>>) deserialize(getMapLoadOff);
 
-                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(getMapLoadOff);
-                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
-                            
-                                            convsLoadOff = (HashMap<String, LinkedList<Message>>) inMap.readObject();
+                                        out.writeObject("OK");
+                                        out.flush();
 
-                                            out.writeObject("OK");
-                                            out.flush();
-
-                                            out.writeObject(convsLoadOff);
-                                            out.flush();
-                                        }
+                                        out.writeObject(convsLoadOff);
+                                        out.flush();
 
                                         getUnreadLoadOff = rsLoadOff.getBytes("unread");
                             
                                         //Deserialize the byte array back to HashMap
-                                        HashMap<String, Integer> unreadLoadOff;
+                                        HashMap<String, Integer> unreadLoadOff = (HashMap<String, Integer>) deserialize(getUnreadLoadOff);
 
-                                        try (ByteArrayInputStream byteIn = new ByteArrayInputStream(getUnreadLoadOff);
-                                                ObjectInputStream inMap = new ObjectInputStream(byteIn)) {
-                            
-                                            unreadLoadOff = (HashMap<String, Integer>) inMap.readObject();
-
-                                            out.writeObject(unreadLoadOff);
-                                            out.flush();
-                                        }
+                                        out.writeObject(unreadLoadOff);
+                                        out.flush();
 
                                         if (stmtLoadOff != null) {
                                             stmtLoadOff.close();
@@ -861,6 +1007,43 @@ class ClientHandler implements Runnable {
                                 if (resCreateGroup.equals("OK")) {
                                     out.writeObject("OK");
                                     out.flush();
+
+                                    Connection connRegJoinGroup = null;
+                                    PreparedStatement stmtRegJoinGroup = null;
+                                    String insertQueryRegJoinGroup = "INSERT OR REPLACE INTO groupmsgs (topic, msgs, unread) VALUES (?, ?, ?)";
+                                    HashMap<String, LinkedList<String>> convsRegJoinGroup = new HashMap<String, LinkedList<String>>();
+                                    HashMap<String, Integer> unreadRegJoinGroup = new HashMap<String, Integer>();
+
+                                    //Insert placeholders for unread messages and message history
+                                    try {
+                                        connRegJoinGroup = connect();
+                                        stmtRegJoinGroup = connRegJoinGroup.prepareStatement(insertQueryRegJoinGroup);
+
+                                        byte[] mapRegJoinGroup = serialize(convsRegJoinGroup);
+                                        byte[] mapUnreadRegJoinGroup = serialize(unreadRegJoinGroup);
+        
+                                        stmtRegJoinGroup.setString(1, topic);
+                                        stmtRegJoinGroup.setBytes(2, mapRegJoinGroup);
+                                        stmtRegJoinGroup.setBytes(3, mapUnreadRegJoinGroup);
+                                
+                                        stmtRegJoinGroup.executeUpdate();
+
+                                        System.out.println("Group meessage placeholder saved.");
+
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    } finally {
+                                        try {
+                                            if (stmtRegJoinGroup != null) {
+                                                stmtRegJoinGroup.close();
+                                            }
+                                            if (connRegJoinGroup != null) {
+                                                connRegJoinGroup.close();
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+                                    }
 
                                     joinGroup(topic, usernameCreateGroup);
                                 } else if (resCreateGroup.equals("EXISTS")) {
@@ -954,6 +1137,21 @@ class ClientHandler implements Runnable {
         } catch (CertificateException e) {
             throw new Exception("Failed to load certificate: " + e.getMessage(), e);
         }
+    }
+
+    public static List<String> getAllPeerUsernames() {
+        List<String> usernames = new ArrayList<>();
+        String query = "SELECT username FROM peers";
+
+        try (Connection conn = connect(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            while (rs.next()) {
+                usernames.add(rs.getString("username"));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return usernames;
     }
 
     private void synchronizeDB() {

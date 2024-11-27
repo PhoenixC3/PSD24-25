@@ -9,6 +9,7 @@ import java.util.Map;
 
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -32,6 +33,7 @@ public class PeerController {
     @FXML private ProgressIndicator searchProgress;
     @FXML private Label searchStatusLabel;
     @FXML private Button searchButton;
+    @FXML private Button refreshButton;
     @FXML private Button createGroupButton;
     @FXML private ListView<String> groupsListView;
     @FXML private TextField topicField;
@@ -70,6 +72,21 @@ public class PeerController {
 
     //Groups that the user has created
     private List<String> createdGroups = new ArrayList<>();
+
+    private ChangeListener<String> contactSelectionListener = (observable, oldValue, newValue) -> {
+        if (newValue != null) {
+            startConversationWithPeer(newValue);
+    
+            // Reset the unread message count
+            unreadMessageCounts.put(newValue, 0);
+            refreshContactsList();
+    
+            // Deselect the groups list
+            groupsListView.getSelectionModel().clearSelection();
+    
+            setGroupLeader(false);
+        }
+    };
 
     public void initialize(String userId, int port, String password) {
         try {
@@ -153,6 +170,12 @@ public class PeerController {
         }
     }
 
+    public void addToConnected(String peerId) {
+        if (!connectedPeers.contains(peerId)) {
+            connectedPeers.add(peerId);
+        }
+    }
+
     private void getMessageCounts() {
         unreadMessageCounts = peer.getMessageCounts();
     }
@@ -175,26 +198,14 @@ public class PeerController {
     //Configure contacts list
     private void initializeContactsList() {
         //Already connected peers appear on the left side
+        connectedPeers.clear();
+        connectedPeers.addAll(peer.getConnectedPeers());
+
         filteredPeers = new FilteredList<>(connectedPeers);
         contactsListView.setItems(filteredPeers);
         
         //On clicking another user's name we start the conversation
-        contactsListView.getSelectionModel().selectedItemProperty().addListener(
-            (observable, oldValue, newValue) -> {
-                if (newValue != null) {
-                    startConversationWithPeer(newValue);
-
-                    //Reset the unread message count
-                    unreadMessageCounts.put(newValue, 0);
-                    refreshContactsList();
-
-                    // Deselect the groups list
-                    groupsListView.getSelectionModel().clearSelection();
-
-                    setGroupLeader(false);
-                }
-            }
-        );
+        contactsListView.getSelectionModel().selectedItemProperty().addListener(contactSelectionListener);
         
         //Visual updating stuff
         contactsListView.setCellFactory(lv -> new ListCell<String>() {
@@ -318,8 +329,16 @@ public class PeerController {
     private void initializeSearch() {
         searchProgress.setVisible(false);
         searchStatusLabel.setVisible(false);
+        refreshButton.setOnAction(event -> refreshContacts());
         
         searchButton.setOnAction(event -> performSearch());
+    }
+
+    private void refreshContacts() {
+        connectedPeers.clear();
+        connectedPeers.addAll(peer.getConnectedPeers());
+        searchStatusLabel.setVisible(false);
+        refreshContactsList();
     }
 
     //Get (local but persistent) message history for a certain conversation
@@ -377,6 +396,11 @@ public class PeerController {
             
             peer.getPeerInfo(searchText);
         }
+        else {
+            connectedPeers.clear();
+            connectedPeers.addAll(peer.getConnectedPeers());
+            searchStatusLabel.setVisible(false);
+        }
     }
     
     //Enter a conversation tab with a certain user
@@ -416,11 +440,11 @@ public class PeerController {
     public void updatePeerList(String peerId) {
         if (peerId != null) {
             Platform.runLater(() -> {
-                if (!connectedPeers.contains(peerId)) {
-                    connectedPeers.add(peerId);
-                    searchProgress.setVisible(false);
-                    searchStatusLabel.setText("Found peer: " + peerId);
-                }
+                connectedPeers.clear();
+                connectedPeers.add(peerId);
+                searchProgress.setVisible(false);
+                searchStatusLabel.setText("Found peer: " + peerId);
+                refreshContactsList();
             });
         }
         else 
@@ -475,6 +499,8 @@ public class PeerController {
     
                     //Add message to conversation history
                     addMessageToConv("Me: " + message, activeConversationId);
+
+                    moveContactUp(activeConversationId);
                 } 
                 else {
                     addErrorMessage("Failed to send message: User does not exist");
@@ -519,25 +545,14 @@ public class PeerController {
         messagesVBox.getChildren().add(messageContainer);
     }
 
-    //Add to the users that we have already communicated with
-    public void addToConnected(String sender) {
-        if (!connectedPeers.contains(sender)) {
-            connectedPeers.add(sender);
-        }
-    }
-
     //Display received message
     public void appendReceivedMessage(String sender, String content) {
         Platform.runLater(() -> {
             messageHistory.computeIfAbsent(sender, k -> new ArrayList<>())
                         .add(new ChatMessage(sender, content, false));
 
-            //Add to users we already communicated with
-            if (!connectedPeers.contains(sender)) {
-                connectedPeers.add(sender);
-            }
-
             addMessageToConv("Other: " + content, sender);
+            moveContactUp(sender);
 
             if (activeConversationId != null && activeConversationId.equals(sender)) {
                 displayMessageBubble(sender, content, false);
@@ -567,14 +582,29 @@ public class PeerController {
         });
     }
 
+    // Handle incoming messages
+    private void moveContactUp(String sender) {
+        // Move the sender to the top of the contacts list
+        contactsListView.getSelectionModel().selectedItemProperty().removeListener(contactSelectionListener);
+
+        connectedPeers.remove(sender);
+        connectedPeers.add(0, sender);
+        refreshContactsList();
+
+        contactsListView.getSelectionModel().selectedItemProperty().addListener(contactSelectionListener);
+    }
+
+    // Refresh the contacts list
+    private void refreshContactsList() {
+        contactsListView.setItems(null);
+        contactsListView.setItems(filteredPeers);
+        contactsListView.refresh();
+    }
+
     //Count bubble but for offline messages
     public void updateOfflineMsgCount(String sender) {
         unreadMessageCounts.merge(sender, 0, Integer::sum);
         refreshContactsList();
-    }
-    
-    private void refreshContactsList() {
-        contactsListView.refresh();
     }
 
     private void refreshGroupsList() {
@@ -649,5 +679,6 @@ public class PeerController {
     //Save message history on close
     public void saveMessages() {
         peer.saveMessageHistory(convs, unreadMessageCounts);
+        peer.saveConnectedPeers(new ArrayList<String>(connectedPeers));
     }
 }
