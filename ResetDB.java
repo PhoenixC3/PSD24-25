@@ -14,6 +14,8 @@ public class ResetDB {
         String excludeTruststore1 = "general_truststore.jks";
         String excludeTruststore2 = "server_truststore.jks";
 
+        System.out.println("Reseting DB!");
+
         // Clean up keystores folder
         deleteFilesInDirectoryExcept(keystoresPath, excludeKeystore);
 
