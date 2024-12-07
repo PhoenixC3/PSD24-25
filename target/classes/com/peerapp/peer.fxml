@@ -38,12 +38,19 @@
             <Label text="Groups" style="-fx-font-weight: bold;"/>
             <TextField fx:id="topicField" promptText="Group Topic"/>
             <Button fx:id="createGroupButton" text="Create Group"/>
-            <TextField fx:id="memberField" promptText="Member to Add" visible="false"/>
-            <Button fx:id="addMemberButton" text="Add Member to Group" visible="false"/>
             <Label fx:id="groupStatusLabel" 
                         visible="false" 
                         wrapText="true"/>
             <ListView fx:id="groupsListView" VBox.vgrow="ALWAYS"/>
+
+            <!-- Available groups -->
+            <Label text="Groups you can join" style="-fx-font-weight: bold;"/>
+            <Label fx:id="additionalGroupStatusLabel" 
+                        visible="false" 
+                        wrapText="true"/>
+            <ListView fx:id="additionalGroupsListView" VBox.vgrow="ALWAYS"/>
+            <Button fx:id="addMemberButton" text="Join Group" visible="false"/>
+            <Button fx:id="refreshButtonGroups" text="Refresh" layoutX="50" layoutY="20"/>
         </VBox>
         
         <!-- Right side: Chat Area -->

@@ -3,4 +3,4 @@
 Guardar group msg history
 Guardar created groups
 
-Meter logica nos peers <--
+Mudar logica nos groups

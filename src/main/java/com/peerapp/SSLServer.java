@@ -68,10 +68,28 @@ public class SSLServer {
     }
     
     private static void initializeDatabase() {
-        try (Scanner scanner = new Scanner(System.in)) {
-            System.out.print("Enter the port number for the server: ");
-            PORT = Integer.parseInt(scanner.nextLine());
+        // Get PORT from user input
+        Scanner scanner = new Scanner(System.in);
+
+        while (true) {
+            System.out.print("Enter the port number for the server (1024-65535): ");
+
+            try {
+                String input = scanner.nextLine().trim();
+                PORT = Integer.parseInt(input);
+
+                // Validate that the port is in the valid range (1024 to 65535)
+                if (PORT >= 1024 && PORT <= 65535) {
+                    break; // Valid port, exit loop
+                } else {
+                    System.out.println("Invalid port number. Please enter a number between 1024 and 65535.");
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Please enter a numeric value.");
+            }
         }
+
+        scanner.close();
 
         DB_URL = "jdbc:sqlite:peers" + PORT + ".db";
 
@@ -477,6 +495,90 @@ class ClientHandler implements Runnable {
                                     }
                                 }
         
+                                break;
+                            case "GETGROUPS":
+                                String myGroupsUsernameAll = (String) in.readObject();
+
+                                List<String> groupsAll = new ArrayList<>();
+                                String sqlAll = "SELECT topic, members FROM groups";
+
+                                Connection connGetGroups = null;
+                                PreparedStatement stmtGetGroups = null;
+
+                                try {
+                                    connGetGroups = connect();
+                                    stmtGetGroups = connGetGroups.prepareStatement(sqlAll);
+
+                                    ResultSet rs = stmtGetGroups.executeQuery();
+
+                                    while (rs.next()) {
+                                        List<String> members = deserialize(rs.getBytes("members"));
+                                        
+                                        if (!members.contains(myGroupsUsernameAll)) {
+                                            groupsAll.add(rs.getString("topic"));
+                                        }
+                                    }
+                                } catch (SQLException e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmtGetGroups != null) {
+                                            stmtGetGroups.close();
+                                        }
+
+                                        if (connGetGroups != null) {
+                                            connGetGroups.close();
+                                        }
+                                    } catch (SQLException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                out.writeObject(groupsAll);
+                                out.flush();
+
+                                break;
+
+                            case "GETMYGROUPS":
+                                String myGroupsUsername = (String) in.readObject();
+
+                                List<String> groups = new ArrayList<>();
+                                String sql = "SELECT topic, members FROM groups";
+
+                                Connection connMyGroups = null;
+                                PreparedStatement stmtMyGroups = null;
+
+                                try {
+                                    connMyGroups = connect();
+                                    stmtMyGroups = connMyGroups.prepareStatement(sql);
+                                    ResultSet rs = stmtMyGroups.executeQuery();
+
+                                    while (rs.next()) {
+                                        List<String> members = deserialize(rs.getBytes("members"));
+                                        
+                                        if (members.contains(myGroupsUsername)) {
+                                            groups.add(rs.getString("topic"));
+                                        }
+                                    }
+                                } catch (SQLException e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (stmtMyGroups != null) {
+                                            stmtMyGroups.close();
+                                        }
+
+                                        if (connMyGroups != null) {
+                                            connMyGroups.close();
+                                        }
+                                    } catch (SQLException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                out.writeObject(groups);
+                                out.flush();
+
                                 break;
 
                             case "SAVEPEERSORDER":
@@ -1516,13 +1618,12 @@ class ClientHandler implements Runnable {
         }
 
         //Create the group
-        sql = "INSERT INTO groups(topic, members, msgs) VALUES(?, ?, ?)";
+        sql = "INSERT INTO groups(topic, members) VALUES(?, ?)";
 
         try (Connection conn = connect();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, topic);
             pstmt.setBytes(2, serialize(new ArrayList<String>()));
-            pstmt.setBytes(3, serialize(new ArrayList<String>()));
             pstmt.executeUpdate();
 
             return "OK";

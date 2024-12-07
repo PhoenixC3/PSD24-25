@@ -443,6 +443,44 @@ public class Peer {
         }
     }
 
+    public List<String> getMyGroups() {
+        refreshServer();
+
+        try {
+            oosServer.writeObject("GETMYGROUPS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            List<String> groups = (List<String>) oisServer.readObject();
+
+            return groups;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public List<String> getAvailableGroups() {
+        refreshServer();
+
+        try {
+            oosServer.writeObject("GETGROUPS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            List<String> groups = (List<String>) oisServer.readObject();
+
+            return groups;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     //Create a group chat
     public void createGroup(String groupTopic) {
         refreshServer();

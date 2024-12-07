@@ -34,8 +34,10 @@ public class PeerController {
     @FXML private Label searchStatusLabel;
     @FXML private Button searchButton;
     @FXML private Button refreshButton;
+    @FXML private Button refreshButtonGroups;
     @FXML private Button createGroupButton;
     @FXML private ListView<String> groupsListView;
+    @FXML private ListView<String> additionalGroupsListView;
     @FXML private TextField topicField;
     @FXML private TextField memberField;
     @FXML private Label groupStatusLabel;
@@ -46,8 +48,14 @@ public class PeerController {
     //Peers that have already sent messages
     private ObservableList<String> connectedPeers = FXCollections.observableArrayList();
 
+    //Peers that have already sent messages
+    private ObservableList<String> shownGroups = FXCollections.observableArrayList();
+
     //Peers after search
     private FilteredList<String> filteredPeers;
+
+    //Peers after search
+    private FilteredList<String> filteredGroups;
 
     //To use when unread messages
     private Map<String, List<ChatMessage>> messageHistory = new HashMap<>();
@@ -64,14 +72,14 @@ public class PeerController {
     //User that we are currently chatting with
     private String activeConversationId;
 
+    //User that we are currently chatting with
+    private String selectedGroup;
+
     //Message history
     private HashMap<String, LinkedList<String>> convs = new HashMap<String, LinkedList<String>>();
 
     //Message history groups
     private HashMap<String, LinkedList<String>> convsGroups = new HashMap<String, LinkedList<String>>();
-
-    //Groups that the user has created
-    private List<String> createdGroups = new ArrayList<>();
 
     private ChangeListener<String> contactSelectionListener = (observable, oldValue, newValue) -> {
         if (newValue != null) {
@@ -83,8 +91,33 @@ public class PeerController {
     
             // Deselect the groups list
             groupsListView.getSelectionModel().clearSelection();
-    
-            setGroupLeader(false);
+            addMemberButton.setVisible(false);
+        }
+    };
+
+    private ChangeListener<String> groupSelectionListener = (observable, oldValue, newValue) -> {
+        if (newValue != null) {
+            startConversationWithGroup(newValue);
+
+            //Reset the unread message count
+            unreadMessageCountsGroup.put(newValue, 0);
+            refreshGroupsList();
+
+            // Deselect the contacts list
+            contactsListView.getSelectionModel().clearSelection();
+            addMemberButton.setVisible(false);
+        }
+    };
+
+    private ChangeListener<String> joinSelectionListener = (observable, oldValue, newValue) -> {
+        if (newValue != null) {
+            selectedGroup = newValue;
+
+            // Deselect the contacts and my groups list
+            contactsListView.getSelectionModel().clearSelection();
+            groupsListView.getSelectionModel().clearSelection();
+
+            addMemberButton.setVisible(true);
         }
     };
 
@@ -129,32 +162,29 @@ public class PeerController {
         }
 
         peer.createGroup(groupTopic);
-        createdGroups.add(groupTopic);
         topicField.clear();
     }
 
     private void addToGroup() {
-        String groupTopic = topicField.getText();
-        String member = memberField.getText();
+        String groupTopic = selectedGroup;
+        String member = peer.getUserId();
 
-        if (groupTopic.isEmpty()) {
-            showErrorGroup("Group topic cannot be empty.");
+        if (member.isEmpty()) {
+            showErrorGroup("Member username cannot be empty.");
             return;
         }
 
         peer.addMemberToGroup(groupTopic, member);
-        topicField.clear();
-        memberField.clear();
+
+        additionalGroupsListView.setItems(FXCollections.observableArrayList(peer.getAvailableGroups()));
     }
 
     public void updateGroupList(String topic) {
-        Platform.runLater(() -> groupsListView.getItems().add(topic));
-    }
-
-    //Group leader
-    public void setGroupLeader(boolean isLeader) {
-        addMemberButton.setVisible(isLeader);
-        memberField.setVisible(isLeader);
+        Platform.runLater(() -> {
+            ObservableList<String> currentItems = FXCollections.observableArrayList(groupsListView.getItems());
+            currentItems.add(topic);
+            groupsListView.setItems(currentItems);
+        });
     }
 
     //Get message history (persistent) and fill the left side contact history list
@@ -242,32 +272,19 @@ public class PeerController {
 
     //Configure contacts list
     private void initializeGroupsList() {
-        
-        //On clicking another groups name we start the conversation
-        groupsListView.getSelectionModel().selectedItemProperty().addListener(
-            (observable, oldValue, newValue) -> {
-                if (newValue != null) {
-                    startConversationWithGroup(newValue);
+        //MY GROUPS
+        shownGroups.clear();
+        shownGroups.addAll(peer.getMyGroups());
 
-                    //Reset the unread message count
-                    unreadMessageCountsGroup.put(newValue, 0);
-                    refreshGroupsList();
+        filteredGroups = new FilteredList<>(shownGroups);
+        groupsListView.setItems(filteredGroups);
 
-                    // Deselect the contacts list
-                    contactsListView.getSelectionModel().clearSelection();
+        groupsListView.getSelectionModel().selectedItemProperty().addListener(groupSelectionListener);
 
-                    // Show or hide the member field and button based on group ownership
-                    boolean isGroupCreator = createdGroups.contains(newValue);
+        //AVAILABLE GROUPS
+        additionalGroupsListView.setItems(FXCollections.observableArrayList(peer.getAvailableGroups()));
 
-                    if (isGroupCreator) {
-                        setGroupLeader(true);
-                    }
-                    else {
-                        setGroupLeader(false);
-                    }
-                }
-            }
-        );
+        additionalGroupsListView.getSelectionModel().selectedItemProperty().addListener(joinSelectionListener);
         
         //Visual updating stuff
         groupsListView.setCellFactory(lv -> new ListCell<String>() {
@@ -330,6 +347,7 @@ public class PeerController {
         searchProgress.setVisible(false);
         searchStatusLabel.setVisible(false);
         refreshButton.setOnAction(event -> refreshContacts());
+        refreshButtonGroups.setOnAction(event -> additionalGroupsListView.setItems(FXCollections.observableArrayList(peer.getAvailableGroups())));
         
         searchButton.setOnAction(event -> performSearch());
     }
