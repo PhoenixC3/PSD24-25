@@ -181,9 +181,8 @@ public class PeerController {
 
     public void updateGroupList(String topic) {
         Platform.runLater(() -> {
-            ObservableList<String> currentItems = FXCollections.observableArrayList(groupsListView.getItems());
-            currentItems.add(topic);
-            groupsListView.setItems(currentItems);
+            shownGroups.add(topic);
+            refreshGroupsList();
         });
     }
 
@@ -503,6 +502,8 @@ public class PeerController {
 
                 //Add message to conversation history
                 addMessageToConvGroup("Me: " + message, activeConversationId);
+
+                moveGroupUp(activeConversationId);
             } else {
                 sent = peer.sendMessage(activeConversationId, message);
 
@@ -589,6 +590,7 @@ public class PeerController {
                         .add(new ChatMessage(sender, content, false));
             
             addMessageToConvGroup("Other: " + content, group);
+            moveGroupUp(group);
 
             if (activeConversationId != null && activeConversationId.equals(group)) {
                 displayMessageBubble(sender, content, false);
@@ -612,6 +614,18 @@ public class PeerController {
         contactsListView.getSelectionModel().selectedItemProperty().addListener(contactSelectionListener);
     }
 
+    // Handle incoming messages
+    private void moveGroupUp(String group) {
+        // Move the sender to the top of the contacts list
+        groupsListView.getSelectionModel().selectedItemProperty().removeListener(groupSelectionListener);
+
+        shownGroups.remove(group);
+        shownGroups.add(0, group);
+        refreshGroupsList();
+
+        groupsListView.getSelectionModel().selectedItemProperty().addListener(groupSelectionListener);
+    }
+
     // Refresh the contacts list
     private void refreshContactsList() {
         contactsListView.setItems(null);
@@ -626,6 +640,8 @@ public class PeerController {
     }
 
     private void refreshGroupsList() {
+        groupsListView.setItems(null);
+        groupsListView.setItems(filteredGroups);
         groupsListView.refresh();
     }
 
