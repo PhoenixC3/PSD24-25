@@ -55,9 +55,26 @@ public class SSLServer {
         Connection conn = null;
         Statement stmt = null;
         
+        // Get PORT from user input
         Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter the port number for the server: ");
-        PORT = Integer.parseInt(scanner.nextLine());
+        while (true) {
+            System.out.print("Enter the port number for the server (1024-65535): ");
+
+            try {
+                String input = scanner.nextLine().trim();
+                PORT = Integer.parseInt(input);
+
+                // Validate that the port is in the valid range (1024 to 65535)
+                if (PORT >= 1024 && PORT <= 65535) {
+                    break; // Valid port, exit loop
+                } else {
+                    System.out.println("Invalid port number. Please enter a number between 1024 and 65535.");
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Please enter a numeric value.");
+            }
+        }
+
         scanner.close();
 
         DB_URL = "jdbc:sqlite:peers" + PORT + ".db";
