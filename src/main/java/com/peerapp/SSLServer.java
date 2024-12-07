@@ -20,6 +20,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class SSLServer {
 
@@ -862,9 +865,9 @@ class ClientHandler implements Runnable {
                                 String selectQueryOff = "SELECT msgs, unread FROM messages WHERE username = ?";
                                 LinkedList<Message> myMsgs = null;
                                 HashMap<String, Integer> unreadOff = null;
-
+                            
                                 HashMap<String, LinkedList<Message>> convsOff = null;
-                                
+                            
                                 try {
                                     connOff = connect();
                                     stmtOff = connOff.prepareStatement(selectQueryOff);
@@ -872,85 +875,59 @@ class ClientHandler implements Runnable {
                                     rsOff = stmtOff.executeQuery();
                             
                                     if (rsOff.next()) {
-                                        //Update the offline conversation history of the user
+                                        // Update the offline conversation history of the user
                                         mapOff = rsOff.getBytes("msgs");
                                         convsOff = (HashMap<String, LinkedList<Message>>) deserialize(mapOff);
-
+                            
                                         myMsgs = convsOff.get(msg.getSender());
-
+                            
                                         if (myMsgs == null) {
                                             myMsgs = new LinkedList<Message>();
                                             myMsgs.add(msg);
-                                        }
-                                        else 
-                                        {
+                                        } else {
                                             myMsgs.add(msg);
                                         }
-
+                            
                                         convsOff.put(msg.getSender(), myMsgs);
-
-                                        //Update the offline unread message count of the user
+                            
+                                        // Update the offline unread message count of the user
                                         unreadMapOff = rsOff.getBytes("unread");
                                         unreadOff = (HashMap<String, Integer>) deserialize(unreadMapOff);
-
+                            
                                         int count = 0;
-
+                            
                                         if (unreadOff.get(msg.getSender()) != null) {
                                             count = unreadOff.get(msg.getSender());
                                         }
-
+                            
                                         unreadOff.put(msg.getSender(), count + 1);
-                                    }
-                                    else 
-                                    {
-                                        //If it is the first time, start count at 1 and add message to an empty list
+                                    } else {
+                                        // If it is the first time, start count at 1 and add message to an empty list
                                         convsOff = new HashMap<String, LinkedList<Message>>();
                                         myMsgs = new LinkedList<Message>();
                                         unreadOff = new HashMap<String, Integer>();
-
+                            
                                         myMsgs.add(msg);
                                         convsOff.put(msg.getSender(), myMsgs);
                                         unreadOff.put(msg.getSender(), 1);
                                     }
                             
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                } finally {
-                                    try {
-                                        if (rsOff != null) {
-                                            rsOff.close();
-                                        }
-                                        if (stmtOff != null) {
-                                            stmtOff.close();
-                                        }
-                                        if (connOff != null) {
-                                            connOff.close();
-                                        }
-                                    } catch (Exception e) {
-                                        e.printStackTrace();
-                                    }
-                                }
-
-                                //Update the entry in the database (new entry called offline:username)
-                                String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
-
-                                try {
+                                    // Update the entry in the database (new entry called offline:username)
+                                    String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
                                     byte[] mapInsert = serialize(convsOff);
                                     byte[] unreadInsert = serialize(unreadOff);
-
-                                    connOff = connect();
+                            
                                     stmtOff = connOff.prepareStatement(insertQueryOff);
-
                                     stmtOff.setString(1, "offline:" + msg.getRecipient());
                                     stmtOff.setBytes(2, mapInsert);
                                     stmtOff.setBytes(3, unreadInsert);
                             
                                     stmtOff.executeUpdate();
-
+                            
                                     System.out.println("Offline messages saved.");
-
+                            
                                     synchronizeDB();
-
+                            
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -968,7 +945,7 @@ class ClientHandler implements Runnable {
                                         e.printStackTrace();
                                     }
                                 }
-                                
+                            
                                 break;
 
                             case "ADDOFFLINEGROUP":
@@ -1394,60 +1371,73 @@ class ClientHandler implements Runnable {
     }
 
     private void synchronizeDB() {
+        ExecutorService executor = Executors.newFixedThreadPool(10); // Adjust the pool size as needed
+    
         try {
+            KeyStore trustStore = KeyStore.getInstance("JKS");
+            try (FileInputStream keystoreStream = new FileInputStream("truststores/server_truststore.jks")) {
+                trustStore.load(keystoreStream, "serverpass".toCharArray());
+            }
+    
+            // Get the server certificate
+            X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
+    
+            // Store the server's certificate as trusted by default in the user's truststore
             for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
-                String[] ipPort = sv.split(":");
-                String ip = ipPort[0];
-                int port = Integer.parseInt(ipPort[1]);
-        
-                KeyStore trustStore = KeyStore.getInstance("JKS");
-                try (FileInputStream keystoreStream = new FileInputStream("truststores/server_truststore.jks")) {
-                    trustStore.load(keystoreStream, "serverpass".toCharArray());
+                if (!trustStore.containsAlias(sv)) {
+                    trustStore.setCertificateEntry(sv, server_cert);
                 }
-        
-                // Get the server certificate
-                X509Certificate server_cert = loadCertificate("certs/server_cert.cer");
-        
-                // Store the server's certificate as trusted by default in the user's truststore
-                trustStore.setCertificateEntry(sv, server_cert);
-        
-                // Save the truststore file in the folder
-                try (FileOutputStream fos = new FileOutputStream("truststores/server_truststore.jks")) {
-                    trustStore.store(fos, "serverpass".toCharArray());
-                }
-        
-                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                trustManagerFactory.init(trustStore);
-        
-                SSLContext sslContext = SSLContext.getInstance("TLS");
-                sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
-        
-                SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-
-                SSLSocket sock = null;
-                ObjectOutputStream out = null;
-        
-                try {
-                    sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
-                    out = new ObjectOutputStream(sock.getOutputStream());
-                        
-                    System.out.println("Synchronizing with server: " + ip + ":" + port);
-
-                    out.writeObject("SYNC");
-                    out.flush();
-        
-                    // Send the database file
-                    sendFile(DB_FILE, out);
-        
-                } catch (IOException e) {
-                    System.out.println("Failed to synchronize with server: " + ip + ":" + port);
-                }
+            }
+    
+            // Save the truststore file in the folder
+            try (FileOutputStream fos = new FileOutputStream("truststores/server_truststore.jks")) {
+                trustStore.store(fos, "serverpass".toCharArray());
+            }
+    
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
+    
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+    
+            SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+    
+            for (String sv : readIpPortPairsFromFile("serverAddresses.txt")) {
+                executor.submit(() -> {
+                    String[] ipPort = sv.split(":");
+                    String ip = ipPort[0];
+                    int port = Integer.parseInt(ipPort[1]);
+    
+                    try (SSLSocket sock = (SSLSocket) sslSocketFactory.createSocket(ip, port);
+                         ObjectOutputStream out = new ObjectOutputStream(sock.getOutputStream())) {
+    
+                        System.out.println("Synchronizing with server: " + ip + ":" + port);
+    
+                        out.writeObject("SYNC");
+                        out.flush();
+    
+                        // Send the database file
+                        sendFile(DB_FILE, out);
+    
+                    } catch (IOException e) {
+                        System.out.println("Failed to synchronize with server: " + ip + ":" + port);
+                    }
+                });
             }
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+            }
         }
     }
-
+    
     public void sendFile(String filePath, ObjectOutputStream out) throws IOException {
         File file = new File(filePath);
         long fileSize = file.length();
@@ -1455,17 +1445,13 @@ class ClientHandler implements Runnable {
         // Send the file size first
         out.writeLong(fileSize);
         out.flush();
-
-        BufferedInputStream bis = null;
     
-        try {
-            bis = new BufferedInputStream(new FileInputStream(file));
+        try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
             byte[] buffer = new byte[4096];
             int bytesRead;
             while ((bytesRead = bis.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
             }
-
             out.flush();
             System.out.println("DB File sent successfully.");
         } catch (IOException e) {

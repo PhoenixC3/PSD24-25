@@ -1,5 +1,6 @@
 package com.peerapp;
 
+import java.io.File;
 import java.net.BindException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,6 +18,8 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.layout.*;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.text.Text;
@@ -586,6 +589,11 @@ public class PeerController {
                 unreadMessageCounts.merge(sender, 1, Integer::sum);
                 refreshContactsList();
             }
+
+            String musicFile = "zap.mp3";
+            Media sound = new Media(new File(musicFile).toURI().toString());
+            MediaPlayer mediaPlayer = new MediaPlayer(sound);
+            mediaPlayer.play();
         });
     }
 
@@ -605,6 +613,11 @@ public class PeerController {
                 unreadMessageCountsGroup.merge(group, 1, Integer::sum);
                 refreshGroupsList();
             }
+
+            String musicFile = "zap.mp3";
+            Media sound = new Media(new File(musicFile).toURI().toString());
+            MediaPlayer mediaPlayer = new MediaPlayer(sound);
+            mediaPlayer.play();
         });
     }
 
