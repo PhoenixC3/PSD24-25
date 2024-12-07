@@ -189,6 +189,7 @@ public class PeerController {
     //Get message history (persistent) and fill the left side contact history list
     private void getMessages() {
         HashMap<String, LinkedList<String>> convsGet = peer.loadMessageHistory();
+        HashMap<String, LinkedList<String>> convsGetGroups = peer.loadMessageHistoryGroups();
 
         if (convsGet != null) {
             this.convs = convsGet;
@@ -196,6 +197,10 @@ public class PeerController {
             for (String key : convsGet.keySet()) {
                 addToConnected(key);
             }
+        }
+
+        if (convsGetGroups != null) {
+            this.convsGroups = convsGetGroups;
         }
     }
 
@@ -207,6 +212,7 @@ public class PeerController {
 
     private void getMessageCounts() {
         unreadMessageCounts = peer.getMessageCounts();
+        unreadMessageCountsGroup = peer.getMessageCountsGroups();
     }
 
     //Visual specs and send message button configuration
@@ -639,6 +645,12 @@ public class PeerController {
         refreshContactsList();
     }
 
+    //Count bubble but for offline messages
+    public void updateOfflineMsgCountGroups(String sender) {
+        unreadMessageCountsGroup.merge(sender, 0, Integer::sum);
+        refreshGroupsList();
+    }
+
     private void refreshGroupsList() {
         groupsListView.setItems(null);
         groupsListView.setItems(filteredGroups);
@@ -714,5 +726,7 @@ public class PeerController {
     public void saveMessages() {
         peer.saveMessageHistory(convs, unreadMessageCounts);
         peer.saveConnectedPeers(new ArrayList<String>(connectedPeers));
+
+        peer.saveMessageHistoryGroups(convsGroups, unreadMessageCountsGroup);
     }
 }

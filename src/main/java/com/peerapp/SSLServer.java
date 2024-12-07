@@ -52,7 +52,7 @@ public class SSLServer {
     
     private static final String CREATE_GROUPS_MESSAGES_TABLE_SQL = 
         "CREATE TABLE IF NOT EXISTS groupmsgs (" +
-        "topic TEXT NOT NULL UNIQUE, " +
+        "username TEXT NOT NULL UNIQUE, " +
         "msgs BLOB NOT NULL, " +
         "unread BLOB NOT NULL);";
 
@@ -496,6 +496,7 @@ class ClientHandler implements Runnable {
                                 }
         
                                 break;
+
                             case "GETGROUPS":
                                 String myGroupsUsernameAll = (String) in.readObject();
 
@@ -602,9 +603,6 @@ class ClientHandler implements Runnable {
                                     stmtSaveOrder.executeUpdate();
 
                                     System.out.println("Order saved.");
-
-                                    synchronizeDB();
-
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -646,7 +644,6 @@ class ClientHandler implements Runnable {
                                     stmt.executeUpdate();
 
                                     System.out.println("Messages saved.");
-
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -665,74 +662,46 @@ class ClientHandler implements Runnable {
                                 break;
                             
                             case "SAVEMSGSGROUPS":
-                                String peerIdGroup = (String) in.readObject();
-                                String topicGroupSave = (String) in.readObject();
+                                String peerIdGSave = (String) in.readObject();
+                                HashMap<String, LinkedList<String>> convsGSave = (HashMap<String, LinkedList<String>>) in.readObject();
+                                HashMap<String, Integer> unreadSaveGSave = (HashMap<String, Integer>) in.readObject();
 
-                                LinkedList<String> convsGroup = (LinkedList<String>) in.readObject();
-                                int unreadSaveGroup = (int) in.readObject();
+                                byte[] mapGSave = serialize(convsGSave);
+                                byte[] mapUnreadGSave = serialize(unreadSaveGSave);
 
                                 //Save history of messages and unread message count in the database
-                                Connection connGroup = null;
-                                PreparedStatement stmtGroup = null;
-                                String selectQueryGroups = "SELECT msgs, unread FROM groupmsgs WHERE topic = ?";
-                                String insertQueryGroups = "UPDATE groupmsgs SET msgs = ? WHERE topic = ?";
-                                String insertQueryGroups2 = "UPDATE groupmsgs SET unread = ? WHERE topic = ?";
+                                Connection connGSave = null;
+                                PreparedStatement stmtGSave = null;
+                                String insertQueryGSave = "INSERT OR REPLACE INTO groupmsgs (username, msgs, unread) VALUES (?, ?, ?)";
 
                                 try {
-                                    connGroup = connect();
-                                    stmtGroup = connGroup.prepareStatement(selectQueryGroups);
+                                    connGSave = connect();
+                                    stmtGSave = connGSave.prepareStatement(insertQueryGSave);
 
-                                    stmtGroup.setString(1, topicGroupSave);
+                                    stmtGSave.setString(1, peerIdGSave);
+                                    stmtGSave.setBytes(2, mapGSave);
+                                    stmtGSave.setBytes(3, mapUnreadGSave);
                             
-                                    ResultSet rs = stmtGroup.executeQuery();
+                                    stmtGSave.executeUpdate();
 
-                                    if (rs.next()) {
-                                        byte[] mapGroup = rs.getBytes("msgs");
-                                        byte[] mapUnreadGroup = rs.getBytes("unread");
+                                    System.out.println("Messages saved.");
 
-                                        //Deserialize the byte array back to HashMap
-                                        HashMap<String, LinkedList<String>> convsLoadGroup = (HashMap<String, LinkedList<String>>) deserialize(mapGroup);
-
-                                        convsLoadGroup.put(peerIdGroup, convsGroup);
-
-                                        byte[] mapUpdateGroup = serialize(convsLoadGroup);
-
-                                        stmtGroup = connGroup.prepareStatement(insertQueryGroups);
-
-                                        stmtGroup.setBytes(1, mapUpdateGroup);
-                                        stmtGroup.setString(2, topicGroupSave);
-                                        stmtGroup.executeUpdate();
-
-                                        HashMap<String, Integer> unreadLoadGroup = (HashMap<String, Integer>) deserialize(mapUnreadGroup);
-
-                                        unreadLoadGroup.put(peerIdGroup, unreadSaveGroup);
-
-                                        byte[] mapUpdateUnreadGroup = serialize(unreadLoadGroup);
-
-                                        stmtGroup = connGroup.prepareStatement(insertQueryGroups2);
-                                        stmtGroup.setBytes(1, mapUpdateUnreadGroup);
-                                        stmtGroup.setString(2, topicGroupSave);
-                                        stmtGroup.executeUpdate();
-                                    }
-
-                                    System.out.println("Group messages saved.");
+                                    synchronizeDB();
 
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
                                     try {
-                                        if (stmtGroup != null) {
-                                            stmtGroup.close();
+                                        if (stmtGSave != null) {
+                                            stmtGSave.close();
                                         }
-                                        if (connGroup != null) {
-                                            connGroup.close();
+                                        if (connGSave != null) {
+                                            connGSave.close();
                                         }
                                     } catch (Exception e) {
                                         e.printStackTrace();
                                     }
                                 }
-
-                                synchronizeDB();
 
                                 break;
 
@@ -768,14 +737,6 @@ class ClientHandler implements Runnable {
                                         out.writeObject(unreadLoad);
                                         out.flush();
 
-                                        if (rs != null) {
-                                            rs.close();
-                                        }
-
-                                        if (stmtLoad != null) {
-                                            stmtLoad.close();
-                                        }
-
                                         byte[] unreadUpdateLoad = serialize(new HashMap<String, Integer>());
 
                                         //Delete unread count, to be updated in the next app iteration
@@ -788,8 +749,6 @@ class ClientHandler implements Runnable {
                                         } catch (SQLException e) {
                                             e.printStackTrace();
                                         }
-
-                                        synchronizeDB();
                                     } else {
                                         out.writeObject("NOK");
                                         out.flush();
@@ -819,57 +778,46 @@ class ClientHandler implements Runnable {
                                 break;
 
                             case "LOADMSGSGROUPS":
-                                String peerLoadGroup = (String) in.readObject();
-                                String topicLoadGroup = (String) in.readObject();
-                            
-                                Connection connLoadGroup = null;
-                                PreparedStatement stmtLoadGroup = null;
-                                ResultSet rsGroup = null;
-                                String selectQueryGroup = "SELECT msgs, unread FROM groupmsgs WHERE topic = ?";
+                                String peerLoadGLoad = (String) in.readObject();
+                                
+                                Connection connLoadGLoad = null;
+                                PreparedStatement stmtLoadGLoad = null;
+                                ResultSet rsGLoad = null;
+                                String selectQueryGLoad = "SELECT msgs, unread FROM groupmsgs WHERE username = ?";
                             
                                 try {
-                                    connLoadGroup = connect();
-                                    stmtLoadGroup = connLoadGroup.prepareStatement(selectQueryGroup);
-                                    stmtLoadGroup.setString(1, topicLoadGroup);
-                                    rsGroup = stmtLoadGroup.executeQuery();
+                                    connLoadGLoad = connect();
+                                    stmtLoadGLoad = connLoadGLoad.prepareStatement(selectQueryGLoad);
+                                    stmtLoadGLoad.setString(1, peerLoadGLoad);
+                                    rsGLoad = stmtLoadGLoad.executeQuery();
                             
-                                    if (rsGroup.next()) {
-                                        byte[] mapLoadGroup = rsGroup.getBytes("msgs");
-                                        byte[] mapUnreadLoadGroup = rsGroup.getBytes("unread");
+                                    if (rsGLoad.next()) {
+                                        byte[] mapLoadGLoad = rsGLoad.getBytes("msgs");
+                                        byte[] mapUnreadLoadGLoad = rsGLoad.getBytes("unread");
 
                                         //Deserialize the byte array back to HashMap
-                                        HashMap<String, LinkedList<String>> convsLoadGroup = (HashMap<String, LinkedList<String>>) deserialize(mapLoadGroup);
+                                        HashMap<String, LinkedList<String>> convsLoadGLoad = (HashMap<String, LinkedList<String>>) deserialize(mapLoadGLoad);
 
                                         out.writeObject("OK");
                                         out.flush();
 
-                                        out.writeObject(convsLoadGroup.get(peerLoadGroup));
+                                        out.writeObject(convsLoadGLoad);
                                         out.flush();
 
-                                        HashMap<String, Integer> unreadLoadGroup = (HashMap<String, Integer>) deserialize(mapUnreadLoadGroup);
+                                        HashMap<String, Integer> unreadLoadGLoad = (HashMap<String, Integer>) deserialize(mapUnreadLoadGLoad);
 
-                                        out.writeObject(unreadLoadGroup.get(peerLoadGroup));
+                                        out.writeObject(unreadLoadGLoad);
                                         out.flush();
 
-                                        unreadLoadGroup.put(peerLoadGroup, 0);
-
-                                        if (rsGroup != null) {
-                                            rsGroup.close();
-                                        }
-
-                                        if (stmtLoadGroup != null) {
-                                            stmtLoadGroup.close();
-                                        }
-
-                                        byte[] unreadUpdateLoadGroup = serialize(unreadLoadGroup);
+                                        byte[] unreadUpdateLoadGLoad = serialize(new HashMap<String, Integer>());
 
                                         //Delete unread count, to be updated in the next app iteration
-                                        String updateQueryLoadGroup = "UPDATE groupmsgs SET unread = ? WHERE topic = ?";
+                                        String updateQueryLoadGLoad = "UPDATE groupmsgs SET unread = ? WHERE username = ?";
 
                                         try {
-                                            stmtLoadGroup = connLoadGroup.prepareStatement(updateQueryLoadGroup);
-                                            stmtLoadGroup.setBytes(1, unreadUpdateLoadGroup);
-                                            stmtLoadGroup.setString(2, topicLoadGroup);
+                                            stmtLoadGLoad = connLoadGLoad.prepareStatement(updateQueryLoadGLoad);
+                                            stmtLoadGLoad.setBytes(1, unreadUpdateLoadGLoad);
+                                            stmtLoadGLoad.setString(2, peerLoadGLoad);
                                         } catch (SQLException e) {
                                             e.printStackTrace();
                                         }
@@ -879,22 +827,22 @@ class ClientHandler implements Runnable {
                                         out.writeObject("NOK");
                                         out.flush();
 
-                                        System.out.println("No messages found for user: " + peerLoadGroup);
+                                        System.out.println("No messages found for user: " + peerLoadGLoad);
                                     }
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
                                     try {
-                                        if (rsGroup != null) {
-                                            rsGroup.close();
+                                        if (rsGLoad != null) {
+                                            rsGLoad.close();
                                         }
 
-                                        if (stmtLoadGroup != null) {
-                                            stmtLoadGroup.close();
+                                        if (stmtLoadGLoad != null) {
+                                            stmtLoadGLoad.close();
                                         }
 
-                                        if (connLoadGroup != null) {
-                                            connLoadGroup.close();
+                                        if (connLoadGLoad != null) {
+                                            connLoadGLoad.close();
                                         }
                                     } catch (Exception e) {
                                         e.printStackTrace();
@@ -1022,7 +970,129 @@ class ClientHandler implements Runnable {
                                 }
                                 
                                 break;
+
+                            case "ADDOFFLINEGROUP":
+                                Message msgAg = (Message) in.readObject();
+                                String groupAg = (String) in.readObject();
+
+                                byte[] mapOffAg = null;
+                                byte[] unreadMapOffAg = null;
+                            
+                                Connection connOffAg = null;
+                                PreparedStatement stmtOffAg = null;
+                                ResultSet rsOffAg = null;
+                                String selectQueryOffAg = "SELECT msgs, unread FROM groupmsgs WHERE username = ?";
+                                LinkedList<Message> myMsgsAg = null;
+                                HashMap<String, Integer> unreadOffAg = null;
+
+                                HashMap<String, LinkedList<Message>> convsOffAg = null;
                                 
+                                try {
+                                    connOffAg = connect();
+                                    stmtOffAg = connOffAg.prepareStatement(selectQueryOffAg);
+                                    stmtOffAg.setString(1, "offline:" + msgAg.getRecipient());
+                                    rsOffAg = stmtOffAg.executeQuery();
+                            
+                                    if (rsOffAg.next()) {
+                                        //Update the offline conversation history of the user
+                                        mapOffAg = rsOffAg.getBytes("msgs");
+                                        convsOffAg = (HashMap<String, LinkedList<Message>>) deserialize(mapOffAg);
+
+                                        myMsgsAg = convsOffAg.get(groupAg);
+
+                                        if (myMsgsAg == null) {
+                                            myMsgsAg = new LinkedList<Message>();
+                                            myMsgsAg.add(msgAg);
+                                        }
+                                        else 
+                                        {
+                                            myMsgsAg.add(msgAg);
+                                        }
+
+                                        convsOffAg.put(groupAg, myMsgsAg);
+
+                                        //Update the offline unread message count of the user
+                                        unreadMapOffAg = rsOffAg.getBytes("unread");
+                                        unreadOffAg = (HashMap<String, Integer>) deserialize(unreadMapOffAg);
+
+                                        int countAg = 0;
+
+                                        if (unreadOffAg.get(groupAg) != null) {
+                                            countAg = unreadOffAg.get(groupAg);
+                                        }
+
+                                        unreadOffAg.put(groupAg, countAg + 1);
+                                    }
+                                    else 
+                                    {
+                                        //If it is the first time, start count at 1 and add message to an empty list
+                                        convsOffAg = new HashMap<String, LinkedList<Message>>();
+                                        myMsgsAg = new LinkedList<Message>();
+                                        unreadOffAg = new HashMap<String, Integer>();
+
+                                        myMsgsAg.add(msgAg);
+                                        convsOffAg.put(groupAg, myMsgsAg);
+                                        unreadOffAg.put(groupAg, 1);
+                                    }
+                            
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsOffAg != null) {
+                                            rsOffAg.close();
+                                        }
+                                        if (stmtOffAg != null) {
+                                            stmtOffAg.close();
+                                        }
+                                        if (connOffAg != null) {
+                                            connOffAg.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                //Update the entry in the database (new entry called offline:username)
+                                String insertQueryOffAg = "INSERT OR REPLACE INTO groupmsgs (username, msgs, unread) VALUES (?, ?, ?)";
+
+                                try {
+                                    byte[] mapInsertAg = serialize(convsOffAg);
+                                    byte[] unreadInsertAg = serialize(unreadOffAg);
+
+                                    connOffAg = connect();
+                                    stmtOffAg = connOffAg.prepareStatement(insertQueryOffAg);
+
+                                    stmtOffAg.setString(1, "offline:" + msgAg.getRecipient());
+                                    stmtOffAg.setBytes(2, mapInsertAg);
+                                    stmtOffAg.setBytes(3, unreadInsertAg);
+                            
+                                    stmtOffAg.executeUpdate();
+
+                                    System.out.println("Offline messages saved.");
+
+                                    synchronizeDB();
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsOffAg != null) {
+                                            rsOffAg.close();
+                                        }
+                                        if (stmtOffAg != null) {
+                                            stmtOffAg.close();
+                                        }
+                                        if (connOffAg != null) {
+                                            connOffAg.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                
+                                break;   
+
                             case "LOADOFFLINE":
                                 String peerLoadOff = (String) in.readObject();
                                 byte[] getMapLoadOff = null;
@@ -1059,10 +1129,6 @@ class ClientHandler implements Runnable {
                                         out.writeObject(unreadLoadOff);
                                         out.flush();
 
-                                        if (stmtLoadOff != null) {
-                                            stmtLoadOff.close();
-                                        }
-
                                         //Delete old offline entry, as the messages were merged with the conversation history
                                         String deleteQuery = "DELETE FROM messages WHERE username = ?";
 
@@ -1070,9 +1136,6 @@ class ClientHandler implements Runnable {
 
                                         stmtLoadOff.setString(1, "offline:" + peerLoadOff);
                                         stmtLoadOff.executeUpdate();
-
-                                        synchronizeDB();
-
                                     } else {
                                         out.writeObject("NOK");
                                         out.flush();
@@ -1099,6 +1162,79 @@ class ClientHandler implements Runnable {
                                 }
                                 
                                 break;
+
+                            case "LOADOFFLINEGROUP":
+                                String peerLoadOffLg = (String) in.readObject();
+                                byte[] getMapLoadOffLg = null;
+                                byte[] getUnreadLoadOffLg = null;
+                            
+                                Connection connLoadOffLg = null;
+                                PreparedStatement stmtLoadOffLg = null;
+                                ResultSet rsLoadOffLg = null;
+                                String selectQueryLoadOffLg = "SELECT msgs, unread FROM groupmsgs WHERE username = ?";
+                            
+                                try {
+                                    connLoadOffLg = connect();
+                                    stmtLoadOffLg = connLoadOffLg.prepareStatement(selectQueryLoadOffLg);
+                                    stmtLoadOffLg.setString(1, "offline:" + peerLoadOffLg);
+                                    rsLoadOffLg = stmtLoadOffLg.executeQuery();
+                            
+                                    if (rsLoadOffLg.next()) {
+                                        getMapLoadOffLg = rsLoadOffLg.getBytes("msgs");
+                            
+                                        //Deserialize the byte array back to HashMap
+                                        HashMap<String, LinkedList<Message>> convsLoadOffLg = (HashMap<String, LinkedList<Message>>) deserialize(getMapLoadOffLg);
+
+                                        out.writeObject("OK");
+                                        out.flush();
+
+                                        out.writeObject(convsLoadOffLg);
+                                        out.flush();
+
+                                        getUnreadLoadOffLg = rsLoadOffLg.getBytes("unread");
+                            
+                                        //Deserialize the byte array back to HashMap
+                                        HashMap<String, Integer> unreadLoadOffLg = (HashMap<String, Integer>) deserialize(getUnreadLoadOffLg);
+
+                                        out.writeObject(unreadLoadOffLg);
+                                        out.flush();
+
+                                        //Delete old offline entry, as the messages were merged with the conversation history
+                                        String deleteQueryLg = "DELETE FROM groupmsgs WHERE username = ?";
+
+                                        stmtLoadOffLg = connLoadOffLg.prepareStatement(deleteQueryLg);
+
+                                        stmtLoadOffLg.setString(1, "offline:" + peerLoadOffLg);
+                                        stmtLoadOffLg.executeUpdate();
+
+                                        synchronizeDB();
+
+                                    } else {
+                                        out.writeObject("NOK");
+                                        out.flush();
+
+                                        System.out.println("No offline messages found for user: " + peerLoadOffLg);
+                                    }
+                            
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    try {
+                                        if (rsLoadOffLg != null) {
+                                            rsLoadOffLg.close();
+                                        }
+                                        if (stmtLoadOffLg != null) {
+                                            stmtLoadOffLg.close();
+                                        }
+                                        if (connLoadOffLg != null) {
+                                            connLoadOffLg.close();
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                
+                                break;
                             
                             case "CREATEGROUP":
                                 String topic = (String) in.readObject();
@@ -1112,7 +1248,7 @@ class ClientHandler implements Runnable {
 
                                     Connection connRegJoinGroup = null;
                                     PreparedStatement stmtRegJoinGroup = null;
-                                    String insertQueryRegJoinGroup = "INSERT OR REPLACE INTO groupmsgs (topic, msgs, unread) VALUES (?, ?, ?)";
+                                    String insertQueryRegJoinGroup = "INSERT OR REPLACE INTO groupmsgs (username, msgs, unread) VALUES (?, ?, ?)";
                                     HashMap<String, LinkedList<String>> convsRegJoinGroup = new HashMap<String, LinkedList<String>>();
                                     HashMap<String, Integer> unreadRegJoinGroup = new HashMap<String, Integer>();
 
@@ -1124,7 +1260,7 @@ class ClientHandler implements Runnable {
                                         byte[] mapRegJoinGroup = serialize(convsRegJoinGroup);
                                         byte[] mapUnreadRegJoinGroup = serialize(unreadRegJoinGroup);
         
-                                        stmtRegJoinGroup.setString(1, topic);
+                                        stmtRegJoinGroup.setString(1, usernameCreateGroup);
                                         stmtRegJoinGroup.setBytes(2, mapRegJoinGroup);
                                         stmtRegJoinGroup.setBytes(3, mapUnreadRegJoinGroup);
                                 
@@ -1214,13 +1350,14 @@ class ClientHandler implements Runnable {
                 } catch (IOException e) {
                     System.out.println("Client disconnected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
                     break;
-                } catch (ClassNotFoundException e) {
+                } catch (Exception e) {
                     System.out.println("Client disconnected: " + sslSocket.getInetAddress() + ":" + sslSocket.getPort());
+                    break;
                 }
             }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     //Connect to the database
@@ -1398,7 +1535,6 @@ class ClientHandler implements Runnable {
             }
     
             String insertQuery = "INSERT INTO peers (username, password, salt, ip, port, cert) VALUES (?, ?, ?, ?, ?, ?)";
-            stmt.close();
             stmt = conn.prepareStatement(insertQuery);
     
             stmt.setString(1, username);

@@ -31,7 +31,7 @@
                         visible="false" 
                         wrapText="true"/>
             </HBox>
-            <Label text="Available Users" style="-fx-font-weight: bold;"/>
+            <Label text="Chat History" style="-fx-font-weight: bold;"/>
             <ListView fx:id="contactsListView" VBox.vgrow="ALWAYS"/>
             
             <!-- Group Management Section -->

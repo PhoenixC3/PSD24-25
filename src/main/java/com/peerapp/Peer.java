@@ -32,6 +32,7 @@ public class Peer {
     private ObjectInputStream oisServer;
 
     private HashMap<String, Integer> unreadMsgs = new HashMap<String, Integer>();
+    private HashMap<String, Integer> unreadMsgsGroups = new HashMap<String, Integer>();
 
     public Peer(String userId, String password, int port, PeerController peerController) throws Exception {
         this.userId = userId;
@@ -205,37 +206,37 @@ public class Peer {
                                 oos.writeObject(message);
                                 oos.flush();
                             }
-                            // else 
-                            // {
-                            //     //The message is "sent" (to the server for offline storage) but stays in the offline messaging queue
-                            //     SecretKey key = EncryptionUtil.generateSecretKey();
-                            //     PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, recipient);
-                            //     byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
+                            else 
+                            {
+                                //The message is "sent" (to the server for offline storage) but stays in the offline messaging queue
+                                SecretKey key = EncryptionUtil.generateSecretKey();
+                                PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, mem);
+                                byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
                         
-                            //     String[] encryptedContent = EncryptionUtil.encrypt(content, key);
-                            //     byte[] iv = Base64.getDecoder().decode(encryptedContent[1]);
+                                String[] encryptedContent = EncryptionUtil.encrypt(content, key);
+                                byte[] iv = Base64.getDecoder().decode(encryptedContent[1]);
                         
-                            //     PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                            //     String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
+                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                                String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
                         
-                            //     Message message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv);
+                                Message message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, group);
                 
-                            //     refreshServer();
+                                refreshServer();
                 
-                            //     try {
+                                try {
                 
-                            //         oosServer.writeObject("ADDOFFLINE");
-                            //         oosServer.flush();
+                                    oosServer.writeObject("ADDOFFLINEGROUP");
+                                    oosServer.flush();
                 
-                            //         oosServer.writeObject(message);
-                            //         oosServer.flush();
-                            //     } catch (Exception e) {
-                            //         e.printStackTrace();
-                            //     }
-                
-                            //     return true;
-                
-                            // }
+                                    oosServer.writeObject(message);
+                                    oosServer.flush();
+
+                                    oosServer.writeObject(group);
+                                    oosServer.flush();
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
                     
                         } catch (Exception e) {
                             e.printStackTrace();
@@ -608,9 +609,6 @@ public class Peer {
                 HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
                 HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
 
-                System.out.println(convs);
-                System.out.println(unread);
-
                 //Add the number of unread offline messages to the number of unread online messages
                 for (String key : unread.keySet()) {
                     if (unreadMsgs.containsKey(key)) {
@@ -623,6 +621,50 @@ public class Peer {
                         int temp = unread.get(key);
 
                         unreadMsgs.put(key, temp);
+                    }
+                }
+
+                return convs;
+            }
+
+            return null;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    //Get the messages we received while offline and the unread counts (by conversation)
+    public HashMap<String, LinkedList<Message>> loadOfflineMessageHistoryGroups() {
+        refreshServer();
+
+        try {
+
+            oosServer.writeObject("LOADOFFLINEGROUP");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            String res = (String) oisServer.readObject();
+
+            if (res.equals("OK")) {
+                HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
+                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+
+                //Add the number of unread offline messages to the number of unread online messages
+                for (String key : unread.keySet()) {
+                    if (unreadMsgsGroups.containsKey(key)) {
+                        int temp = unread.get(key);
+                        int temp2 = unreadMsgsGroups.get(key);
+
+                        unreadMsgsGroups.put(key, (temp + temp2));
+                    }
+                    else {
+                        int temp = unread.get(key);
+
+                        unreadMsgsGroups.put(key, temp);
                     }
                 }
 
@@ -827,6 +869,30 @@ public class Peer {
             e.printStackTrace();
         }
     }
+
+    //Save the history of messages (on closing the app)
+    public void saveMessageHistoryGroups(HashMap<String, LinkedList<String>> convs, HashMap<String, Integer> unread) {
+        refreshServer();
+
+        try {
+
+            oosServer.writeObject("SAVEMSGSGROUPS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            //Message history
+            oosServer.writeObject(convs);
+            oosServer.flush();
+
+            //Number of unread messages
+            oosServer.writeObject(unread);
+            oosServer.flush();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
     
     //Load the history of messages and the unread counts
     public HashMap<String, LinkedList<String>> loadMessageHistory() {
@@ -948,9 +1014,134 @@ public class Peer {
         }
 
         return null;
+    }
+
+    //Load the history of messages and the unread counts
+    public HashMap<String, LinkedList<String>> loadMessageHistoryGroups() {
+        refreshServer();
+
+        try {
+
+            oosServer.writeObject("LOADMSGSGROUPS");
+            oosServer.flush();
+
+            oosServer.writeObject(userId);
+            oosServer.flush();
+
+            String res = (String) oisServer.readObject();
+
+            if (res.equals("OK")) {
+                //Messages history
+                HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) oisServer.readObject();
+
+                //Unread counts by conversation
+                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+
+                //Using a global variable because we can't return both maps
+                unreadMsgsGroups = unread;
+
+                //Messages received offline
+                HashMap<String, LinkedList<Message>> offMsgs = loadOfflineMessageHistoryGroups();
+
+                if (offMsgs != null) {
+                    //For each offline message, check the intergity and decrypt it
+                    for (String key : offMsgs.keySet()) {
+                        LinkedList<Message> msgs = offMsgs.get(key);
+                        KeyStore trustStore = KeyStore.getInstance("JKS");
+
+                        try (FileInputStream trustStoreInput = new FileInputStream("truststores/" + userId + "_truststore.jks")) {
+                            trustStore.load(trustStoreInput, password.toCharArray());
+                        }
+
+                        for (Message msg : msgs) {
+                            if (trustStore.getCertificate(msg.getSender()) == null) {
+                                // Add trusted
+                                try {
+        
+                                    oosServer.writeObject("GETPEER");
+                                    oosServer.flush();
+
+                                    oosServer.writeObject(msg.getSender());
+                                    oosServer.flush();
+        
+                                    String resPeer = (String) oisServer.readObject();
+        
+                                    if (resPeer.equals("OK")) {
+                                        String ip = (String) oisServer.readObject();
+                                        int port = (int) oisServer.readObject();
+                                        byte[] cert = (byte[]) oisServer.readObject();
+        
+                                        CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                                        ByteArrayInputStream certInputStream = new ByteArrayInputStream(cert);
+                                        X509Certificate certificate = (X509Certificate) certFactory.generateCertificate(certInputStream);
+        
+                                        trustStore.setCertificateEntry(msg.getSender(), certificate);
+        
+                                        try (FileOutputStream fos = new FileOutputStream("truststores/" + userId + "_truststore.jks")) {
+                                            trustStore.store(fos, password.toCharArray());
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+
+                            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, msg.getSender());
+                    
+                            // Verify the signature of the message
+                            if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
+                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+                                SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
+
+                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey, msg.getIV());
+
+                                //Adding the "You" and "Other" identificators for the controller's visual verifications
+                                if (msg.getSender().equals(userId)) {
+                                    decryptedContent = "You: " + decryptedContent;
+                                }
+                                else 
+                                {
+                                    decryptedContent = "Other: " + decryptedContent;
+                                }
+
+                                //Add the offline messages to the conversations map
+                                LinkedList<String> senderConvs = convs.get(key);
+
+                                if (senderConvs == null) {
+                                    senderConvs = new LinkedList<String>();
+                                }
+
+                                senderConvs.add(decryptedContent);
+                                convs.put(key, senderConvs);
+
+                                //Update the unread count and add the sender to connected users (if it isn't already there) so it appears on the left side chat
+                                javafx.application.Platform.runLater(() -> peerController.updateOfflineMsgCountGroups(key));
+                            } else {
+                                //Integrity check failed
+                                javafx.application.Platform.runLater(() -> peerController.appendError("Integrity verification failed for message from " + msg.getSender()));
+                                System.out.println("Integrity verification failed for message from " + msg.getSender());
+                            }
+                        }
+                    }
+
+                }
+
+                return convs;
+            }
+
+            return null;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     } 
 
     public HashMap<String, Integer> getMessageCounts() {
         return unreadMsgs;
+    }
+
+    public HashMap<String, Integer> getMessageCountsGroups() {
+        return unreadMsgsGroups;
     }
 }
