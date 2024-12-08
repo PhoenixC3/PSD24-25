@@ -343,8 +343,10 @@ public class PeerController {
                     String actualMsg = msg.substring(4);
                     displayMessageBubble(peer.getUserId(), actualMsg, true);
                 } else {
-                    String actualMsg = msg.substring(7);
-                    displayMessageBubble(groupId, actualMsg, false);
+                    // Splits message into two
+                    // Where [0] stores the message sender and [1] stores the actual message
+                    String[] msgSplit = msg.split(":", 2);
+                    displayMessageBubble(msgSplit[0], msgSplit[1], false);
                 }
             }
         }
@@ -378,37 +380,15 @@ public class PeerController {
     }
 
     //Add message to a conversation's history (local but persistent)
-    private void addMessageToConv(String message, String recipient) {
-        LinkedList<String> list = convs.get(recipient);
-
-        if (list == null) {
-            list = new LinkedList<String>();
-
-            list.add(message);
-            convs.put(recipient, list);
-        }
-        else 
-        {
-            list.add(message);
-            convs.put(recipient, list);
-        }
+    private void addMessageToConv(String message, String conversationId) {
+        convs.computeIfAbsent(conversationId, k -> new LinkedList<>())
+                .add(message);
     }
 
     //Add message to a conversation's history (local but persistent)
     private void addMessageToConvGroup(String message, String group) {
-        LinkedList<String> list = convsGroups.get(group);
-
-        if (list == null) {
-            list = new LinkedList<String>();
-
-            list.add(message);
-            convsGroups.put(group, list);
-        }
-        else 
-        {
-            list.add(message);
-            convsGroups.put(group, list);
-        }
+        convsGroups.computeIfAbsent(group, k -> new LinkedList<>())
+               .add(message);
     }
     
     //Search for a user to chat with
@@ -499,11 +479,12 @@ public class PeerController {
         	boolean sent;
 
             if (isGroupConversation(activeConversationId)) {
+                // Send group message
                 peer.sendGroupMessage(activeConversationId, message);
 
-                //Still send the message if the user is not viewing the conversation
+                // Add message to group history
                 messageHistoryGroups.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
-                .add(new ChatMessage(peer.getUserId(), message, true));
+                                    .add(new ChatMessage(peer.getUserId(), message, true));
     
                 displayMessageBubble(peer.getUserId(), message, true);
                 
@@ -513,13 +494,15 @@ public class PeerController {
                 addMessageToConvGroup("Me: " + message, activeConversationId);
 
                 moveGroupUp(activeConversationId);
+
             } else {
+                // Send individual message
                 sent = peer.sendMessage(activeConversationId, message);
 
                 if (sent) {
-                    //Still send the message if the user is not viewing the conversation
+                    // Add message to individual history
                     messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
-                                .add(new ChatMessage(peer.getUserId(), message, true));
+                                    .add(new ChatMessage(peer.getUserId(), message, true));
                     
                     displayMessageBubble(peer.getUserId(), message, true);
                       
@@ -603,7 +586,7 @@ public class PeerController {
             messageHistoryGroups.computeIfAbsent(group, k -> new ArrayList<>())
                         .add(new ChatMessage(sender, content, false));
             
-            addMessageToConvGroup("Other: " + content, group);
+            addMessageToConvGroup(sender + ": " + content, group);
             moveGroupUp(group);
 
             if (activeConversationId != null && activeConversationId.equals(group)) {
