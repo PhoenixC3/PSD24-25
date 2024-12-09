@@ -635,7 +635,7 @@ class ClientHandler implements Runnable {
 
                             case "SAVEMSGS":
                                 String peerId = (String) in.readObject();
-                                HashMap<String, LinkedList<String>> convs = (HashMap<String, LinkedList<String>>) in.readObject();
+                                HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) in.readObject();
                                 HashMap<String, Integer> unreadSave = (HashMap<String, Integer>) in.readObject();
 
                                 byte[] map = serialize(convs);
@@ -676,7 +676,7 @@ class ClientHandler implements Runnable {
                             
                             case "SAVEMSGSGROUPS":
                                 String peerIdGSave = (String) in.readObject();
-                                HashMap<String, LinkedList<String>> convsGSave = (HashMap<String, LinkedList<String>>) in.readObject();
+                                HashMap<String, LinkedList<Message>> convsGSave = (HashMap<String, LinkedList<Message>>) in.readObject();
                                 HashMap<String, Integer> unreadSaveGSave = (HashMap<String, Integer>) in.readObject();
 
                                 byte[] mapGSave = serialize(convsGSave);
@@ -737,7 +737,7 @@ class ClientHandler implements Runnable {
                                         byte[] mapUnreadLoad = rs.getBytes("unread");
 
                                         //Deserialize the byte array back to HashMap
-                                        HashMap<String, LinkedList<String>> convsLoad = (HashMap<String, LinkedList<String>>) deserialize(mapLoad);
+                                        HashMap<String, LinkedList<Message>> convsLoad = (HashMap<String, LinkedList<Message>>) deserialize(mapLoad);
 
                                         out.writeObject("OK");
                                         out.flush();
@@ -809,7 +809,7 @@ class ClientHandler implements Runnable {
                                         byte[] mapUnreadLoadGLoad = rsGLoad.getBytes("unread");
 
                                         //Deserialize the byte array back to HashMap
-                                        HashMap<String, LinkedList<String>> convsLoadGLoad = (HashMap<String, LinkedList<String>>) deserialize(mapLoadGLoad);
+                                        HashMap<String, LinkedList<Message>> convsLoadGLoad = (HashMap<String, LinkedList<Message>>) deserialize(mapLoadGLoad);
 
                                         out.writeObject("OK");
                                         out.flush();

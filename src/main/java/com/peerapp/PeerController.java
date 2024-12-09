@@ -79,10 +79,16 @@ public class PeerController {
     private String selectedGroup;
 
     //Message history
-    private HashMap<String, LinkedList<String>> convs = new HashMap<String, LinkedList<String>>();
+    private HashMap<String, LinkedList<String>> shownConvs = new HashMap<String, LinkedList<String>>();
+
+    //Message history
+    private HashMap<String, LinkedList<String>> shownConvsGroups = new HashMap<String, LinkedList<String>>();
+
+    //Message history
+    private HashMap<String, LinkedList<Message>> convs = new HashMap<String, LinkedList<Message>>();
 
     //Message history groups
-    private HashMap<String, LinkedList<String>> convsGroups = new HashMap<String, LinkedList<String>>();
+    private HashMap<String, LinkedList<Message>> convsGroups = new HashMap<String, LinkedList<Message>>();
 
     private ChangeListener<String> contactSelectionListener = (observable, oldValue, newValue) -> {
         if (newValue != null) {
@@ -195,7 +201,7 @@ public class PeerController {
         HashMap<String, LinkedList<String>> convsGetGroups = peer.loadMessageHistoryGroups();
 
         if (convsGet != null) {
-            this.convs = convsGet;
+            this.shownConvs = convsGet;
 
             for (String key : convsGet.keySet()) {
                 addToConnected(key);
@@ -203,12 +209,12 @@ public class PeerController {
         }
 
         if (convsGetGroups != null) {
-            this.convsGroups = convsGetGroups;
+            this.shownConvsGroups = convsGetGroups;
         }
     }
 
     public void addToConnected(String peerId) {
-        if (!connectedPeers.contains(peerId)) {
+        if (!connectedPeers.contains(peerId) && !peer.getUserId().equals(peerId)) {
             connectedPeers.add(peerId);
         }
     }
@@ -371,24 +377,28 @@ public class PeerController {
 
     //Get (local but persistent) message history for a certain conversation
     private LinkedList<String> getConversationMessages(String recipient) {
-        return convs.get(recipient);
+        return shownConvs.get(recipient);
     }
 
     //Get (local but persistent) message history for a certain conversation
     private LinkedList<String> getConversationMessagesGroups(String group) {
-        return convsGroups.get(group);
+        return shownConvsGroups.get(group);
     }
 
     //Add message to a conversation's history (local but persistent)
-    private void addMessageToConv(String message, String conversationId) {
-        convs.computeIfAbsent(conversationId, k -> new LinkedList<>())
+    private void addMessageToConv(String message, Message enc, String conversationId) {
+        shownConvs.computeIfAbsent(conversationId, k -> new LinkedList<>())
                 .add(message);
+        convs.computeIfAbsent(conversationId, k -> new LinkedList<>())
+                .add(enc);
     }
 
     //Add message to a conversation's history (local but persistent)
-    private void addMessageToConvGroup(String message, String group) {
-        convsGroups.computeIfAbsent(group, k -> new LinkedList<>())
+    private void addMessageToConvGroup(String message, Message enc, String group) {
+        shownConvsGroups.computeIfAbsent(group, k -> new LinkedList<>())
                .add(message);
+        convsGroups.computeIfAbsent(group, k -> new LinkedList<>())
+               .add(enc);
     }
     
     //Search for a user to chat with
@@ -476,11 +486,11 @@ public class PeerController {
         }
         
         if (!message.isEmpty()) {
-        	boolean sent;
+        	Message sent;
 
             if (isGroupConversation(activeConversationId)) {
                 // Send group message
-                peer.sendGroupMessage(activeConversationId, message);
+                sent = peer.sendGroupMessage(activeConversationId, message);
 
                 // Add message to group history
                 messageHistoryGroups.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
@@ -491,7 +501,7 @@ public class PeerController {
                 messageField.clear();
 
                 //Add message to conversation history
-                addMessageToConvGroup("Me: " + message, activeConversationId);
+                addMessageToConvGroup("Me: " + message, sent, activeConversationId);
 
                 moveGroupUp(activeConversationId);
 
@@ -499,7 +509,7 @@ public class PeerController {
                 // Send individual message
                 sent = peer.sendMessage(activeConversationId, message);
 
-                if (sent) {
+                if (sent != null) {
                     // Add message to individual history
                     messageHistory.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
                                     .add(new ChatMessage(peer.getUserId(), message, true));
@@ -509,7 +519,7 @@ public class PeerController {
                     messageField.clear();
     
                     //Add message to conversation history
-                    addMessageToConv("Me: " + message, activeConversationId);
+                    addMessageToConv("Me: " + message, sent, activeConversationId);
 
                     moveContactUp(activeConversationId);
                 } 
@@ -557,12 +567,12 @@ public class PeerController {
     }
 
     //Display received message
-    public void appendReceivedMessage(String sender, String content) {
+    public void appendReceivedMessage(Message msg, String sender, String content, String enc) {
         Platform.runLater(() -> {
             messageHistory.computeIfAbsent(sender, k -> new ArrayList<>())
                         .add(new ChatMessage(sender, content, false));
 
-            addMessageToConv("Other: " + content, sender);
+            addMessageToConv("Other: " + content, msg, sender);
             moveContactUp(sender);
 
             if (activeConversationId != null && activeConversationId.equals(sender)) {
@@ -581,12 +591,12 @@ public class PeerController {
     }
 
     //Display received message
-    public void appendReceivedMessageGroup(String group, String sender, String content) {
+    public void appendReceivedMessageGroup(Message msg, String group, String sender, String content, String enc) {
         Platform.runLater(() -> {
             messageHistoryGroups.computeIfAbsent(group, k -> new ArrayList<>())
                         .add(new ChatMessage(sender, content, false));
             
-            addMessageToConvGroup(sender + ": " + content, group);
+            addMessageToConvGroup(sender + ": " + content, msg, group);
             moveGroupUp(group);
 
             if (activeConversationId != null && activeConversationId.equals(group)) {
