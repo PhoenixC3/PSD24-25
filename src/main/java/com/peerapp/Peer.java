@@ -55,12 +55,26 @@ public class Peer {
 
     private void refreshServer() {
         try {
-            //Set up connection to server
-            this.dbServer = contactServer();
-            this.oosServer = new ObjectOutputStream(dbServer.getOutputStream());
-            this.oisServer = new ObjectInputStream(dbServer.getInputStream());
-        } catch (Exception e) {
-            e.printStackTrace();
+            if (this.dbServer != null) {
+                this.dbServer.startHandshake();
+            }
+            else {
+                //Set up connection to server
+                this.dbServer = contactServer();
+                this.oosServer = new ObjectOutputStream(dbServer.getOutputStream());
+                this.oisServer = new ObjectInputStream(dbServer.getInputStream());
+            }
+        } catch (IOException e1) {
+            try {
+                //Set up connection to server
+                this.dbServer = contactServer();
+                this.oosServer = new ObjectOutputStream(dbServer.getOutputStream());
+                this.oisServer = new ObjectInputStream(dbServer.getInputStream());
+            } catch (Exception e2) {
+                e2.printStackTrace();
+            }
+        } catch (Exception e3) {
+            e3.printStackTrace();
         }
     }
 
@@ -142,7 +156,6 @@ public class Peer {
                 refreshServer();
 
                 try {
-
                     oosServer.writeObject("ADDOFFLINE");
                     oosServer.flush();
 
@@ -153,7 +166,6 @@ public class Peer {
                 }
 
                 return true;
-
             }
     
         } catch (Exception e) {
@@ -681,8 +693,8 @@ public class Peer {
         public void run() {
             refreshServer();
             
-            try (ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-                ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
+            try {
+                ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
 
                 Object o = ois.readObject();
                 

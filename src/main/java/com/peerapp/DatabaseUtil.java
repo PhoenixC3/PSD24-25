@@ -111,14 +111,6 @@ public class DatabaseUtil {
         } catch (Exception e) {
             e.printStackTrace();
             return -3;
-        } finally {
-            try {
-                if (oos != null) oos.close();
-                if (ois != null) ois.close();
-                if (socket != null) socket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
     }
 
@@ -152,7 +144,6 @@ public class DatabaseUtil {
 
                 return "EXISTS";
             }
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -222,14 +213,6 @@ public class DatabaseUtil {
         } catch (Exception e) {
             e.printStackTrace();
             return "ERROR";
-        } finally {
-            try {
-                if (oos != null) oos.close();
-                if (ois != null) ois.close();
-                if (socket != null) socket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
     }
 
@@ -414,7 +397,6 @@ public class DatabaseUtil {
                     int peerPort = (int) genOis.readObject();
                     peerCert = (byte[]) genOis.readObject();
                 }
-    
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -514,7 +496,6 @@ public class DatabaseUtil {
                     out.reset();
     
                     i++;
-    
                 } catch (IOException e) {
                     System.out.println("Failed to synchronize with server: " + ip + ":" + port);
                 }

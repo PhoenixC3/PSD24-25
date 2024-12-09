@@ -23,13 +23,15 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 public class SSLServer {
 
     private static String DB_URL = null;
-    private static Connection conn;
     private static SSLServerSocket svSocket;
     private static int PORT = -1;
+    private static HikariDataSource dataSource;
 
     private static final String CREATE_PEER_TABLE_SQL = 
         "CREATE TABLE IF NOT EXISTS peers (" +
@@ -95,6 +97,19 @@ public class SSLServer {
         scanner.close();
 
         DB_URL = "jdbc:sqlite:peers" + PORT + ".db";
+
+        try {
+            HikariConfig config = new HikariConfig();
+            config.setJdbcUrl(DB_URL);
+            config.setMaximumPoolSize(10);
+            config.setIdleTimeout(30000);
+            config.setConnectionTimeout(30000);
+            config.setLeakDetectionThreshold(5000);
+            dataSource = new HikariDataSource(config);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Failed to initialize HikariCP");
+        }
 
         try (Connection conn = connect(); Statement stmt = conn.createStatement()) {
             stmt.execute(CREATE_PEER_TABLE_SQL);
@@ -180,7 +195,7 @@ public class SSLServer {
                 try {
                     SSLSocket socket = (SSLSocket) svSocket.accept();
                     System.out.println("Client connected: " + socket.getInetAddress() + ":" + socket.getPort());
-                    new Thread(new ClientHandler(socket, PORT)).start();
+                    new Thread(new ClientHandler(socket, PORT, dataSource)).start();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -222,10 +237,7 @@ public class SSLServer {
 
     //Connect to the database
     private static Connection connect() throws SQLException {
-        if (conn == null || conn.isClosed()) {
-            conn = DriverManager.getConnection(DB_URL);
-        }
-        return conn;
+        return dataSource.getConnection();
     }
     
     //Close the server socket and the database connection
@@ -235,12 +247,10 @@ public class SSLServer {
                 svSocket.close();
             }
 
-            if (conn != null && !conn.isClosed()) {
-                conn.close();
+            if (dataSource != null) {
+                dataSource.close();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -248,24 +258,24 @@ public class SSLServer {
 
 class ClientHandler implements Runnable {
     private final SSLSocket sslSocket;
-    private static String DB_URL = null;
     private static String DB_FILE = null;
-    private static Connection conn;
+    private static HikariDataSource dataSource;
     private static int PORT;
 
     private static Map<String, List<SecretSharing.Share>> shares = new HashMap<String, List<SecretSharing.Share>>();
 
-    public ClientHandler(SSLSocket sslSocket, int port) {
+    public ClientHandler(SSLSocket sslSocket, int port, HikariDataSource ds) {
         this.sslSocket = sslSocket;
-        DB_URL = "jdbc:sqlite:peers" + port + ".db";
+        dataSource = ds;
         DB_FILE = "peers" + port + ".db";
         PORT = port;
     }
 
     @Override
     public void run() {
-        try (ObjectInputStream in = new ObjectInputStream(sslSocket.getInputStream());
-             ObjectOutputStream out = new ObjectOutputStream(sslSocket.getOutputStream())) {
+        try {
+            ObjectInputStream in = new ObjectInputStream(sslSocket.getInputStream());
+            ObjectOutputStream out = new ObjectOutputStream(sslSocket.getOutputStream());
 
             out.flush();
 
@@ -338,7 +348,7 @@ class ClientHandler implements Runnable {
 
                                     try {
                                         connReg = connect();
-                                        stmtReg = conn.prepareStatement(insertQueryReg);
+                                        stmtReg = connReg.prepareStatement(insertQueryReg);
 
                                         byte[] mapReg = serialize(convsReg);
                                         byte[] mapUnreadReg = serialize(unreadReg);
@@ -859,7 +869,6 @@ class ClientHandler implements Runnable {
                                 byte[] mapOff = null;
                                 byte[] unreadMapOff = null;
                             
-                                Connection connOff = null;
                                 PreparedStatement stmtOff = null;
                                 ResultSet rsOff = null;
                                 String selectQueryOff = "SELECT msgs, unread FROM messages WHERE username = ?";
@@ -868,8 +877,7 @@ class ClientHandler implements Runnable {
                             
                                 HashMap<String, LinkedList<Message>> convsOff = null;
                             
-                                try {
-                                    connOff = connect();
+                                try (Connection connOff = connect()) {
                                     stmtOff = connOff.prepareStatement(selectQueryOff);
                                     stmtOff.setString(1, "offline:" + msg.getRecipient());
                                     rsOff = stmtOff.executeQuery();
@@ -882,7 +890,7 @@ class ClientHandler implements Runnable {
                                         myMsgs = convsOff.get(msg.getSender());
                             
                                         if (myMsgs == null) {
-                                            myMsgs = new LinkedList<Message>();
+                                            myMsgs = new LinkedList<>();
                                             myMsgs.add(msg);
                                         } else {
                                             myMsgs.add(msg);
@@ -894,40 +902,34 @@ class ClientHandler implements Runnable {
                                         unreadMapOff = rsOff.getBytes("unread");
                                         unreadOff = (HashMap<String, Integer>) deserialize(unreadMapOff);
                             
-                                        int count = 0;
-                            
-                                        if (unreadOff.get(msg.getSender()) != null) {
-                                            count = unreadOff.get(msg.getSender());
-                                        }
-                            
+                                        int count = unreadOff.getOrDefault(msg.getSender(), 0);
                                         unreadOff.put(msg.getSender(), count + 1);
                                     } else {
-                                        // If it is the first time, start count at 1 and add message to an empty list
-                                        convsOff = new HashMap<String, LinkedList<Message>>();
-                                        myMsgs = new LinkedList<Message>();
-                                        unreadOff = new HashMap<String, Integer>();
+                                        // First-time setup
+                                        convsOff = new HashMap<>();
+                                        myMsgs = new LinkedList<>();
+                                        unreadOff = new HashMap<>();
                             
                                         myMsgs.add(msg);
                                         convsOff.put(msg.getSender(), myMsgs);
                                         unreadOff.put(msg.getSender(), 1);
                                     }
                             
-                                    // Update the entry in the database (new entry called offline:username)
+                                    // Update the entry in the database
                                     String insertQueryOff = "INSERT OR REPLACE INTO messages (username, msgs, unread) VALUES (?, ?, ?)";
                                     byte[] mapInsert = serialize(convsOff);
                                     byte[] unreadInsert = serialize(unreadOff);
                             
-                                    stmtOff = connOff.prepareStatement(insertQueryOff);
-                                    stmtOff.setString(1, "offline:" + msg.getRecipient());
-                                    stmtOff.setBytes(2, mapInsert);
-                                    stmtOff.setBytes(3, unreadInsert);
-                            
-                                    stmtOff.executeUpdate();
+                                    try (PreparedStatement insertStmt = connOff.prepareStatement(insertQueryOff)) {
+                                        insertStmt.setString(1, "offline:" + msg.getRecipient());
+                                        insertStmt.setBytes(2, mapInsert);
+                                        insertStmt.setBytes(3, unreadInsert);
+                                        insertStmt.executeUpdate();
+                                    }
                             
                                     System.out.println("Offline messages saved.");
-                            
+
                                     synchronizeDB();
-                            
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 } finally {
@@ -938,14 +940,11 @@ class ClientHandler implements Runnable {
                                         if (stmtOff != null) {
                                             stmtOff.close();
                                         }
-                                        if (connOff != null) {
-                                            connOff.close();
-                                        }
                                     } catch (Exception e) {
                                         e.printStackTrace();
                                     }
                                 }
-                            
+
                                 break;
 
                             case "ADDOFFLINEGROUP":
@@ -1339,10 +1338,7 @@ class ClientHandler implements Runnable {
 
     //Connect to the database
     public static Connection connect() throws SQLException {
-        if (conn == null || conn.isClosed()) {
-            conn = DriverManager.getConnection(DB_URL);
-        }
-        return conn;
+        return dataSource.getConnection();
     }
 
     //Load a certificate from a file

@@ -9,6 +9,7 @@ module com.peerapp {
     requires org.bouncycastle.util;
     requires javafx.base;
     requires javafx.media;
+    requires com.zaxxer.hikari;
 
     opens com.peerapp to javafx.fxml;
     exports com.peerapp;
