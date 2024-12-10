@@ -485,6 +485,14 @@ class ClientHandler implements Runnable {
 
                                         List<String> allConOrder = (List<String>) deserialize(allConOrderBytes);
 
+                                        List<String> allPeerUsernames = getAllPeerUsernames();
+
+                                        for (String peer : allPeerUsernames) {
+                                            if (!allConOrder.contains(peer)) {
+                                                allConOrder.add(peer);
+                                            }
+                                        }
+
                                         out.writeObject(allConOrder);
                                         out.flush();
                                     }

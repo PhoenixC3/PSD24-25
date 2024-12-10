@@ -31,11 +31,11 @@
                         visible="false" 
                         wrapText="true"/>
             </HBox>
-            <Label text="Chat History" style="-fx-font-weight: bold;"/>
+            <Label text="Available Peers:" style="-fx-font-weight: bold;"/>
             <ListView fx:id="contactsListView" VBox.vgrow="ALWAYS"/>
             
             <!-- Group Management Section -->
-            <Label text="Groups" style="-fx-font-weight: bold;"/>
+            <Label text="Groups you are in:" style="-fx-font-weight: bold;"/>
             <TextField fx:id="topicField" promptText="Group Topic"/>
             <Button fx:id="createGroupButton" text="Create Group"/>
             <Label fx:id="groupStatusLabel" 
@@ -44,7 +44,7 @@
             <ListView fx:id="groupsListView" VBox.vgrow="ALWAYS"/>
 
             <!-- Available groups -->
-            <Label text="Groups you can join" style="-fx-font-weight: bold;"/>
+            <Label text="Groups you can join:" style="-fx-font-weight: bold;"/>
             <Label fx:id="additionalGroupStatusLabel" 
                         visible="false" 
                         wrapText="true"/>

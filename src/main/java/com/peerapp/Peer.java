@@ -966,6 +966,9 @@ public class Peer {
                 //Messages history
                 HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
 
+                //Unread counts by conversation
+                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+
                 if (convs != null) {
                     //For each offline message, check the intergity and decrypt it
                     for (String key : convs.keySet()) {
@@ -1058,9 +1061,6 @@ public class Peer {
                         }
                     }
                 }
-
-                //Unread counts by conversation
-                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
 
                 //Using a global variable because we can't return both maps
                 unreadMsgs = unread;
@@ -1182,6 +1182,9 @@ public class Peer {
                 //Messages history
                 HashMap<String, LinkedList<Message>> convs = (HashMap<String, LinkedList<Message>>) oisServer.readObject();
 
+                //Unread counts by conversation
+                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
+
                 if (convs != null) {
                     //For each offline message, check the intergity and decrypt it
                     for (String key : convs.keySet()) {
@@ -1265,9 +1268,6 @@ public class Peer {
                     }
 
                 }
-
-                //Unread counts by conversation
-                HashMap<String, Integer> unread = (HashMap<String, Integer>) oisServer.readObject();
 
                 //Using a global variable because we can't return both maps
                 unreadMsgsGroups = unread;
