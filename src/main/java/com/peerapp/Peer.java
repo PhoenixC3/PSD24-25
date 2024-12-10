@@ -1009,7 +1009,7 @@ public class Peer {
                                 }
                             }
 
-                            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("keystores/" + userId + "keystore.jks", password, userId);
+                            PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("keystores/" + userId + "_keystore.jks", password, userId);
 
                             if (!msg.getSender().equals(userId)) {
                                 pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, msg.getSender());
@@ -1244,7 +1244,7 @@ public class Peer {
                                 }
                                 else 
                                 {
-                                    decryptedContent = "Other: " + decryptedContent;
+                                    decryptedContent = msg.getSender() + ": " + decryptedContent;
                                 }
 
                                 //Add the offline messages to the conversations map
@@ -1333,7 +1333,7 @@ public class Peer {
                                 }
                                 else 
                                 {
-                                    decryptedContent = "Other: " + decryptedContent;
+                                    decryptedContent = msg.getSender() + ": " + decryptedContent;
                                 }
 
                                 //Add the offline messages to the conversations map
