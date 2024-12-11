@@ -362,6 +362,7 @@ public class PeerController {
     private void initializeSearch() {
         searchProgress.setVisible(false);
         searchStatusLabel.setVisible(false);
+        searchStatusLabel.setStyle("-fx-text-fill: white;");
         refreshButton.setOnAction(event -> refreshContacts());
         refreshButtonGroups.setOnAction(event -> additionalGroupsListView.setItems(FXCollections.observableArrayList(peer.getAvailableGroups())));
         
@@ -372,6 +373,7 @@ public class PeerController {
         connectedPeers.clear();
         connectedPeers.addAll(peer.getConnectedPeers());
         searchStatusLabel.setVisible(false);
+        searchStatusLabel.setStyle("-fx-text-fill: white;");
         refreshContactsList();
     }
 
@@ -409,6 +411,7 @@ public class PeerController {
             searchProgress.setVisible(true);
             searchStatusLabel.setText("Searching...");
             searchStatusLabel.setVisible(true);
+            searchStatusLabel.setStyle("-fx-text-fill: white;");
             
             peer.getPeerInfo(searchText);
         }
@@ -416,6 +419,7 @@ public class PeerController {
             connectedPeers.clear();
             connectedPeers.addAll(peer.getConnectedPeers());
             searchStatusLabel.setVisible(false);
+            searchStatusLabel.setStyle("-fx-text-fill: white;");
         }
     }
     
@@ -460,6 +464,7 @@ public class PeerController {
                 connectedPeers.add(peerId);
                 searchProgress.setVisible(false);
                 searchStatusLabel.setText("Found peer: " + peerId);
+                searchStatusLabel.setStyle("-fx-text-fill: white;");
                 refreshContactsList();
             });
         }
@@ -470,6 +475,7 @@ public class PeerController {
             delay.setOnFinished(event -> {
                 searchProgress.setVisible(false);
                 searchStatusLabel.setText("No peers found");
+                searchStatusLabel.setStyle("-fx-text-fill: white;");
             });
             
             delay.play();
@@ -586,6 +592,7 @@ public class PeerController {
             String musicFile = "zap.mp3";
             Media sound = new Media(new File(musicFile).toURI().toString());
             MediaPlayer mediaPlayer = new MediaPlayer(sound);
+            mediaPlayer.setVolume(0.2);
             mediaPlayer.play();
         });
     }
@@ -610,6 +617,7 @@ public class PeerController {
             String musicFile = "zap.mp3";
             Media sound = new Media(new File(musicFile).toURI().toString());
             MediaPlayer mediaPlayer = new MediaPlayer(sound);
+            mediaPlayer.setVolume(0.2);
             mediaPlayer.play();
         });
     }

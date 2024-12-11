@@ -1,0 +1,8 @@
+.root, .vbox, .split-pane {
+    background-image: url('bg.png');
+    -fx-background-image: url('bg.png');
+    background-size: cover;
+    -fx-background-size: cover;
+    background-repeat: no-repeat;
+    -fx-background-repeat: no-repeat;
+}

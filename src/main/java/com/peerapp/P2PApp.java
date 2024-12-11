@@ -47,7 +47,9 @@ public class P2PApp extends Application {
 
         Stage appStage = new Stage();
         appStage.setTitle("P2P Messaging App - " + userId);
-        appStage.setScene(new Scene(root, 800, 600));
+        Scene scene = new Scene(root, 1000, 800);
+        scene.getStylesheets().add(getClass().getResource("/com/peerapp/app.css").toExternalForm());
+        appStage.setScene(scene);
         appStage.show();
 
         appStage.setOnCloseRequest(event -> {
