@@ -29,6 +29,7 @@ import javafx.scene.text.TextFlow;
 public class PeerController {
     @FXML private TextField messageField;
     @FXML private TextField searchField;
+    @FXML private TextField searchKeywordField;
     @FXML private TextField topicField;
     @FXML private TextField memberField;
 
@@ -185,7 +186,7 @@ public class PeerController {
     private void createGroup() {
         String groupTopic = topicField.getText();
 
-        String groupId = "group_" + groupTopic;
+        String groupId = groupTopic;
 
         if (groupTopic.isEmpty()) {
             showErrorGroup("Group topic cannot be empty.");
@@ -448,7 +449,7 @@ public class PeerController {
 
     // Perform search for a keyword
     private void performKeywordSearch() {
-        String keyword = searchField.getText().trim();
+        String keyword = searchKeywordField.getText().trim();
         if (!keyword.isEmpty()) {
             searchProgress.setVisible(true);
             searchStatusLabel.setText("Searching...");
@@ -629,12 +630,18 @@ public class PeerController {
     //Get the message details
     private String getMessageDetails(String messageId) {
         Message message = messageStore.get(messageId);
+
         if (message != null) {
-            String sender = message.getSender();
-            String recipient = message.getRecipient();
-            String keyword = message.getEncryptedContent();
-            return "\"" + keyword + "\" from chat with \"" + (sender.equals(peer.getUserId()) ? recipient : sender) + "\"";
+            if (message.getGroup() == null) {
+                String sender = message.getSender();
+                String recipient = message.getRecipient();
+
+                return "\"" + peer.decryptMessage(message) + "\" from chat with \"" + (sender.equals(peer.getUserId()) ? recipient : sender) + "\"";
+            } else {
+                return "\"" + peer.decryptMessage(message) + "\" from chat with group \"" + message.getGroup() + "\" from \"" + message.getSender() + "\"";
+            }
         }
+
         return "Message not found";
     }
 

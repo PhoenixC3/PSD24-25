@@ -807,11 +807,7 @@ public class Peer {
                             
                                 //Verify the integrity of the message
                                 if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
-                                    //Decrypt the message
-                                    PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                                    SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
-        
-                                    String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey, message.getIV());
+                                    String decryptedContent = decryptMessage(message);
         
                                     //Send it to the controller
                                     javafx.application.Platform.runLater(() -> peerController.appendReceivedMessage(message, message.getSender(), decryptedContent, message.getEncryptedContent()));
@@ -868,11 +864,7 @@ public class Peer {
                             
                                 //Verify the integrity of the message
                                 if (EncryptionUtil.verifySignature(message.getEncryptedContent(), message.getSignedMessage(), pubKey)) {
-                                    //Decrypt the message
-                                    PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                                    SecretKey skey = EncryptionUtil.decryptAESKey(message.getEncKey(), privKey);
-        
-                                    String decryptedContent = EncryptionUtil.decrypt(message.getEncryptedContent(), skey, message.getIV());
+                                    String decryptedContent = decryptMessage(message);
         
                                     //Send it to the controller
                                     javafx.application.Platform.runLater(() -> peerController.appendReceivedMessageGroup(message, message.getGroup(), message.getSender(), decryptedContent, message.getEncryptedContent()));
@@ -896,6 +888,10 @@ public class Peer {
                 e.printStackTrace();
             }
         }
+    }
+
+    public String decryptMessage(Message message) {
+        return EncryptionUtil.decryptMessage(message, userId, password);
     }
 
     //Save the history of messages (on closing the app)
@@ -1020,10 +1016,7 @@ public class Peer {
                     
                             // Verify the signature of the message
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
-                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                                SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
-
-                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey, msg.getIV());
+                                String decryptedContent = decryptMessage(msg);
 
                                 //Adding the "You" and "Other" identificators for the controller's visual verifications
                                 if (msg.getSender().equals(userId)) {
@@ -1115,10 +1108,7 @@ public class Peer {
                     
                             // Verify the signature of the message
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
-                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                                SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
-
-                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey, msg.getIV());
+                                String decryptedContent = decryptMessage(msg);
 
                                 //Adding the "You" and "Other" identificators for the controller's visual verifications
                                 if (msg.getSender().equals(userId)) {
@@ -1236,10 +1226,7 @@ public class Peer {
                     
                             // Verify the signature of the message
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
-                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                                SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
-
-                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey, msg.getIV());
+                                String decryptedContent = decryptMessage(msg);
 
                                 //Adding the "You" and "Other" identificators for the controller's visual verifications
                                 if (msg.getSender().equals(userId)) {
@@ -1322,10 +1309,7 @@ public class Peer {
                     
                             // Verify the signature of the message
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
-                                PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
-                                SecretKey skey = EncryptionUtil.decryptAESKey(msg.getEncKey(), privKey);
-
-                                String decryptedContent = EncryptionUtil.decrypt(msg.getEncryptedContent(), skey, msg.getIV());
+                                String decryptedContent = decryptMessage(msg);
 
                                 //Adding the "You" and "Other" identificators for the controller's visual verifications
                                 if (msg.getSender().equals(userId)) {

@@ -1,5 +1,6 @@
 com\peerapp\PeerController.class
 com\peerapp\Peer$MessageHandler.class
+com\peerapp\SSEUtil.class
 com\peerapp\Peer.class
 com\peerapp\SecretSharing.class
 com\peerapp\PeerController$2.class
@@ -9,8 +10,11 @@ com\peerapp\PeerController$1.class
 com\peerapp\ClientHandler.class
 com\peerapp\EncryptionUtil.class
 com\peerapp\P2PApp.class
+com\peerapp\SSEUtil$Client.class
 com\peerapp\ChatMessage.class
 com\peerapp\LoginController.class
 module-info.class
 com\peerapp\SSLServer.class
 com\peerapp\SecretSharing$Share.class
+com\peerapp\SSEUtil$ByteArray.class
+com\peerapp\SSEUtil$Server.class

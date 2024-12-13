@@ -19,8 +19,9 @@
             <!-- Direct Messages Section -->
             <Label text="Direct Messages" style="-fx-font-weight: bold; -fx-background-color: white; -fx-padding: 5; -fx-background-radius: 10;"/>
             <TextField fx:id="searchField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search contacts..."/>
-            <Button fx:id="searchKeywordButton" text="Search Keyword" layoutX="50" layoutY="20"/>
             <Button fx:id="searchButton" text="Search Peer" layoutX="50" layoutY="20"/>
+            <TextField fx:id="searchKeywordField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search Keywords..."/>
+            <Button fx:id="searchKeywordButton" text="Search Keyword" layoutX="50" layoutY="20"/>
             <Button fx:id="refreshButton" text="Refresh Peers" layoutX="50" layoutY="20"/>
             <HBox spacing="5" alignment="CENTER_LEFT">
                 <ProgressIndicator fx:id="searchProgress" 
@@ -51,7 +52,7 @@
 
             <!-- Available groups -->
             <Label text="Groups you can join:" style="-fx-font-weight: bold; -fx-background-color: white; -fx-padding: 5; -fx-background-radius: 10;"/>
-            <ListView fx:id="additionalGroupsListView" prefHeight="300" VBox.vgrow="ALWAYS"/>
+            <ListView fx:id="additionalGroupsListView" prefHeight="500" VBox.vgrow="ALWAYS"/>
             <Button fx:id="addMemberButton" text="Join Group" visible="false"/>
             <Button fx:id="refreshButtonGroups" text="Refresh Groups" layoutX="50" layoutY="20"/>
         </VBox>

@@ -156,4 +156,19 @@ public class EncryptionUtil {
 
         return newHash.equals(storedHash);
     }
+
+    public static String decryptMessage(Message message, String userId, String password) {
+        try {
+            //Decrypt the message
+            PrivateKey privKey = getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
+            SecretKey skey = decryptAESKey(message.getEncKey(), privKey);
+    
+            String decryptedContent = decrypt(message.getEncryptedContent(), skey, message.getIV());
+    
+            return decryptedContent;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
 }
