@@ -11,9 +11,8 @@ public class Message implements Serializable {
     private byte[] iv;
     private String group;
     private String messageId;
-    private String[] keywords;
 
-    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv, String messageId, String[] keywords) {
+    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv, String messageId) {
         this.sender = sender;
         this.recipient = recipient;
         this.encryptedContent = encryptedContent;
@@ -22,10 +21,9 @@ public class Message implements Serializable {
         this.iv = iv;
         this.group = null;
         this.messageId = messageId;
-        this.keywords = keywords;
     }
 
-    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv, String messageId, String[] keywords, String group) {
+    public Message(String sender, String recipient, byte[] encKey, String encryptedContent, String signedMessage, byte[] iv, String messageId, String group) {
         this.sender = sender;
         this.recipient = recipient;
         this.encryptedContent = encryptedContent;
@@ -34,7 +32,6 @@ public class Message implements Serializable {
         this.iv = iv;
         this.group = group;
         this.messageId = messageId;
-        this.keywords = keywords;
     }
 
     public String getSender() {
@@ -67,9 +64,5 @@ public class Message implements Serializable {
 
     public String getMessageId() {
         return messageId;
-    }
-
-    public String[] getKeywords() {
-        return keywords;
     }
 }

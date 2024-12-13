@@ -108,7 +108,7 @@ public class Peer {
     }
 
     //Send a message through client socket
-    public synchronized Message sendMessage(String recipient, String content, String msgId, String[] keywords) {
+    public synchronized Message sendMessage(String recipient, String content, String msgId) {
         SSLSocket socket = null;
         ObjectOutputStream oos = null;
 
@@ -131,7 +131,7 @@ public class Peer {
                 String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
         
                 // Create message object
-                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords);
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv, msgId);
                 oos = new ObjectOutputStream(socket.getOutputStream());
                 oos.writeObject(message);
                 oos.flush();
@@ -149,7 +149,7 @@ public class Peer {
                 String signedMessageMe = EncryptionUtil.signMessage(encryptedContentMe[0], privKeyMe);
         
                 // Create message object
-                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, keywords);
+                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId);
 
 
                 return messageForMe;
@@ -167,7 +167,7 @@ public class Peer {
                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                 String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
         
-                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords);
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv, msgId);
 
                 refreshServer();
 
@@ -194,7 +194,7 @@ public class Peer {
                 String signedMessageMe = EncryptionUtil.signMessage(encryptedContentMe[0], privKeyMe);
         
                 // Create message object
-                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, keywords);
+                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId);
 
                 return messageForMe;
             }
@@ -206,7 +206,7 @@ public class Peer {
         return null;
     }
 
-    public synchronized Message sendGroupMessage(String group, String content, String msgId, String[] keywords) {
+    public synchronized Message sendGroupMessage(String group, String content, String msgId) {
         try {
             oosServer.writeObject("GETGROUPMEMBERS");
             oosServer.flush();
@@ -242,7 +242,7 @@ public class Peer {
                                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
                         
                                 // Create message object
-                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords, group);
+                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, group);
                                 oos = new ObjectOutputStream(socket.getOutputStream());
                                 oos.writeObject(message);
                                 oos.flush();
@@ -252,7 +252,7 @@ public class Peer {
                                 PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, mem);
                                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
                         
-                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords, group);
+                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, group);
                 
                                 refreshServer();
                 
@@ -290,7 +290,7 @@ public class Peer {
                 String signedMessageMe = EncryptionUtil.signMessage(encryptedContentMe[0], privKeyMe);
         
                 // Create message object
-                Message messageForMe = new Message(userId, userId, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, keywords, group);
+                Message messageForMe = new Message(userId, userId, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, group);
 
                 return messageForMe;
             }
@@ -943,7 +943,7 @@ public class Peer {
     }
     
     //Load the history of messages and the unread counts
-    public HashMap<String, LinkedList<String>> loadMessageHistory() {
+    public ConvsObj<HashMap<String, LinkedList<String>>,HashMap<String, LinkedList<Message>>> loadMessageHistory() {
         refreshServer();
 
         try {
@@ -1017,15 +1017,6 @@ public class Peer {
                             // Verify the signature of the message
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
                                 String decryptedContent = decryptMessage(msg);
-
-                                //Adding the "You" and "Other" identificators for the controller's visual verifications
-                                if (msg.getSender().equals(userId)) {
-                                    decryptedContent = "Me: " + decryptedContent;
-                                }
-                                else 
-                                {
-                                    decryptedContent = "Other: " + decryptedContent;
-                                }
 
                                 //Add the offline messages to the conversations map
                                 LinkedList<String> senderConvs = retConvs.get(msg.getSender());
@@ -1110,15 +1101,6 @@ public class Peer {
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
                                 String decryptedContent = decryptMessage(msg);
 
-                                //Adding the "You" and "Other" identificators for the controller's visual verifications
-                                if (msg.getSender().equals(userId)) {
-                                    decryptedContent = "Me: " + decryptedContent;
-                                }
-                                else 
-                                {
-                                    decryptedContent = "Other: " + decryptedContent;
-                                }
-
                                 //Add the offline messages to the conversations map
                                 LinkedList<String> senderConvs = retConvs.get(msg.getSender());
 
@@ -1128,6 +1110,25 @@ public class Peer {
 
                                 senderConvs.add(decryptedContent);
                                 retConvs.put(msg.getSender(), senderConvs);
+
+                                for (String keyOff : offMsgs.keySet()) {
+                                    LinkedList<Message> msgsOff = offMsgs.get(keyOff);
+
+                                    if (convs.containsKey(keyOff)) {
+                                        LinkedList<Message> msgsConv = convs.get(keyOff);
+
+                                        for (Message msgOff : msgsOff) {
+                                            if (!msgsConv.contains(msgOff)) {
+                                                msgsConv.add(msgOff);
+                                            }
+                                        }
+
+                                        convs.put(keyOff, msgsConv);
+                                    }
+                                    else {
+                                        convs.put(keyOff, msgsOff);
+                                    }
+                                }
 
                                 //Update the unread count and add the sender to connected users (if it isn't already there) so it appears on the left side chat
                                 javafx.application.Platform.runLater(() -> peerController.updateOfflineMsgCount(msg.getSender()));
@@ -1141,7 +1142,7 @@ public class Peer {
                     }
                 }
 
-                return retConvs;
+                return new ConvsObj<>(retConvs, convs);
             }
 
             return null;
@@ -1153,7 +1154,7 @@ public class Peer {
     }
 
     //Load the history of messages and the unread counts
-    public HashMap<String, LinkedList<String>> loadMessageHistoryGroups() {
+    public ConvsObj<HashMap<String, LinkedList<String>>,HashMap<String, LinkedList<Message>>> loadMessageHistoryGroups() {
         refreshServer();
 
         try {
@@ -1227,15 +1228,6 @@ public class Peer {
                             // Verify the signature of the message
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
                                 String decryptedContent = decryptMessage(msg);
-
-                                //Adding the "You" and "Other" identificators for the controller's visual verifications
-                                if (msg.getSender().equals(userId)) {
-                                    decryptedContent = "Me: " + decryptedContent;
-                                }
-                                else 
-                                {
-                                    decryptedContent = msg.getSender() + ": " + decryptedContent;
-                                }
 
                                 //Add the offline messages to the conversations map
                                 LinkedList<String> senderConvs = retConvs.get(key);
@@ -1311,15 +1303,6 @@ public class Peer {
                             if (EncryptionUtil.verifySignature(msg.getEncryptedContent(), msg.getSignedMessage(), pubKey)) {
                                 String decryptedContent = decryptMessage(msg);
 
-                                //Adding the "You" and "Other" identificators for the controller's visual verifications
-                                if (msg.getSender().equals(userId)) {
-                                    decryptedContent = "Me: " + decryptedContent;
-                                }
-                                else 
-                                {
-                                    decryptedContent = msg.getSender() + ": " + decryptedContent;
-                                }
-
                                 //Add the offline messages to the conversations map
                                 LinkedList<String> senderConvs = retConvs.get(key);
 
@@ -1329,6 +1312,25 @@ public class Peer {
 
                                 senderConvs.add(decryptedContent);
                                 retConvs.put(key, senderConvs);
+
+                                for (String keyOff : offMsgs.keySet()) {
+                                    LinkedList<Message> msgsOff = offMsgs.get(keyOff);
+
+                                    if (convs.containsKey(keyOff)) {
+                                        LinkedList<Message> msgsConv = convs.get(keyOff);
+
+                                        for (Message msgOff : msgsOff) {
+                                            if (!msgsConv.contains(msgOff)) {
+                                                msgsConv.add(msgOff);
+                                            }
+                                        }
+
+                                        convs.put(keyOff, msgsConv);
+                                    }
+                                    else {
+                                        convs.put(keyOff, msgsOff);
+                                    }
+                                }
 
                                 //Update the unread count and add the sender to connected users (if it isn't already there) so it appears on the left side chat
                                 javafx.application.Platform.runLater(() -> peerController.updateOfflineMsgCountGroups(msg.getGroup()));
@@ -1342,7 +1344,7 @@ public class Peer {
 
                 }
 
-                return retConvs;
+                return new ConvsObj<>(retConvs, convs);
             }
 
             return null;

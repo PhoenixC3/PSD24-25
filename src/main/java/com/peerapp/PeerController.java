@@ -217,19 +217,57 @@ public class PeerController {
 
     //Get message history (persistent) and fill the left side contact history list
     private void getMessages() {
-        HashMap<String, LinkedList<String>> convsGet = peer.loadMessageHistory();
-        HashMap<String, LinkedList<String>> convsGetGroups = peer.loadMessageHistoryGroups();
+        ConvsObj<HashMap<String, LinkedList<String>>,HashMap<String, LinkedList<Message>>> convsGet = peer.loadMessageHistory();
+        ConvsObj<HashMap<String, LinkedList<String>>,HashMap<String, LinkedList<Message>>> convsGetGroups = peer.loadMessageHistoryGroups();
 
         if (convsGet != null) {
-            this.shownConvs = convsGet;
+            this.shownConvs = convsGet.getFirst();
+            this.convs = convsGet.getSecond();
 
-            for (String key : convsGet.keySet()) {
+            for (String key : convsGet.getFirst().keySet()) {
                 addToConnected(key);
+            }
+
+            for (String key : this.convs.keySet()) {
+                for (int i = 0; i < this.convs.get(key).size(); i++) {
+                    String msg = this.shownConvs.get(key).get(i);
+
+                    for (String keyword : msg.split("\\s+")) {
+                        updateKeywordIndex(keyword, this.convs.get(key).get(i).getMessageId());
+                        System.out.println("keyword: " + keyword + " added to index: " + this.convs.get(key).get(i).getMessageId());
+                    }
+
+                    if (this.convs.get(key).get(i).getSender().equals(peer.getUserId())) {
+                        this.shownConvs.get(key).set(i, "Me: " + msg);
+                    }
+                    else {
+                        this.shownConvs.get(key).set(i, "Other: " + msg);
+                    }
+                }
             }
         }
 
         if (convsGetGroups != null) {
-            this.shownConvsGroups = convsGetGroups;
+            this.shownConvsGroups = convsGetGroups.getFirst();
+            this.convsGroups = convsGetGroups.getSecond();
+
+            for (String key : this.convsGroups.keySet()) {
+                for (int i = 0; i < this.convsGroups.get(key).size(); i++) {
+                    String msg = this.shownConvsGroups.get(key).get(i);
+
+                    for (String keyword : msg.split("\\s+")) {
+                        updateKeywordIndex(keyword, this.convsGroups.get(key).get(i).getMessageId());
+                        System.out.println("keyword: " + keyword + " added to index: " + this.convsGroups.get(key).get(i).getMessageId());
+                    }
+
+                    if (this.convsGroups.get(key).get(i).getSender().equals(peer.getUserId())) {
+                        this.shownConvsGroups.get(key).set(i, "Me: " + msg);
+                    }
+                    else {
+                        this.shownConvsGroups.get(key).set(i, this.convsGroups.get(key).get(i).getSender() + ": " + msg);
+                    }
+                }
+            }
         }
     }
 
@@ -452,45 +490,42 @@ public class PeerController {
             searchStatusLabel.setText("Searching...");
             searchStatusLabel.setVisible(true);
             searchStatusLabel.setStyle("-fx-text-fill: white;");
-            new Thread(() -> {
-                try {
-                    List<String> results = sseClient.search(keyword);
-                    List<String> formattedResults = new ArrayList<>();
-                    for (String messageId : results) {
-                        formattedResults.add(getMessageDetails(messageId));
-                    }
-                    Platform.runLater(() -> {
-                        searchResultsListView.getItems().clear();
-                        if (formattedResults.isEmpty()) {
-                            searchStatusLabel.setText("No results found");
-                        } else {
-                            searchResultsListView.getItems().addAll(formattedResults);
-                            System.out.println("found keyword: " + keyword + " in messages: " + results);
-                            System.out.println("found keyword: " + keyword + " in messages: " + formattedResults);
-                            searchStatusLabel.setText("Search complete");
-                        }
-                        searchProgress.setVisible(false);
-                    });
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    Platform.runLater(() -> {
-                        searchProgress.setVisible(false);
-                        searchStatusLabel.setText("Search failed");
-                    });
+
+            try {
+                List<String> results = sseClient.search(keyword);
+                List<String> formattedResults = new ArrayList<>();
+                for (String messageId : results) {
+                    formattedResults.add(getMessageDetails(messageId));
                 }
-            }).start();
+                Platform.runLater(() -> {
+                    searchResultsListView.getItems().clear();
+                    if (formattedResults.isEmpty()) {
+                        searchStatusLabel.setText("No results found");
+                    } else {
+                        searchResultsListView.getItems().addAll(formattedResults);
+                        System.out.println("found keyword: " + keyword + " in messages: " + results);
+                        System.out.println("found keyword: " + keyword + " in messages: " + formattedResults);
+                        searchStatusLabel.setText("Search complete");
+                    }
+                    searchProgress.setVisible(false);
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    searchProgress.setVisible(false);
+                    searchStatusLabel.setText("Search failed");
+                });
+            }
         }
     }
 
     // Update keyword index when a message is sent
     private void updateKeywordIndex(String keyword, String messageId) {
-        new Thread(() -> {
-            try {
-                sseClient.update(keyword, messageId);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+        try {
+            sseClient.update(keyword, messageId);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
     
     //Enter a conversation tab with a certain user
@@ -572,7 +607,7 @@ public class PeerController {
 
             if (activeGroupConversationId != null) {
                 // Send group message
-                sent = peer.sendGroupMessage(activeGroupConversationId, message, messageId, keywords);
+                sent = peer.sendGroupMessage(activeGroupConversationId, message, messageId);
 
                 // Add message to group history
                 messageHistoryGroups.computeIfAbsent(activeGroupConversationId, k -> new ArrayList<>())
@@ -589,7 +624,7 @@ public class PeerController {
 
             } else if (activeConversationId != null) {
                 // Send individual message
-                sent = peer.sendMessage(activeConversationId, message, messageId, keywords);
+                sent = peer.sendMessage(activeConversationId, message, messageId);
 
                 if (sent != null) {
                     // Add message to individual history
@@ -665,7 +700,7 @@ public class PeerController {
         messageContainer.setPadding(new Insets(5));
         
         TextFlow bubble = new TextFlow();
-        Text senderText = new Text(isSent ? "You: " : senderId + ": ");
+        Text senderText = new Text(isSent ? peer.getUserId() + ": " : senderId + ": ");
         Text messageText = new Text(content);
         
         bubble.getChildren().addAll(senderText, messageText);
@@ -704,8 +739,10 @@ public class PeerController {
                 refreshContactsList();
             }
 
+            String[] keywords = content.split("\\s+");
+
             // Update keyword index
-            for (String keyword : msg.getKeywords()) {
+            for (String keyword : keywords) {
                 updateKeywordIndex(keyword, msg.getMessageId());
                 System.out.println("keyword: " + keyword + " added to index: " + msg.getMessageId());
             }
@@ -735,8 +772,10 @@ public class PeerController {
                 refreshGroupsList();
             }
 
+            String[] keywords = content.split("\\s+");
+
             // Update keyword index
-            for (String keyword : msg.getKeywords()) {
+            for (String keyword : keywords) {
                 updateKeywordIndex(keyword, msg.getMessageId());
                 System.out.println("keyword: " + keyword + " added to index: " + msg.getMessageId());
             }

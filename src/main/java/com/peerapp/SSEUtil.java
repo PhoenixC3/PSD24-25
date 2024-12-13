@@ -12,18 +12,14 @@ public class SSEUtil {
     private static final String HMAC_ALG = "HmacSHA1";
     private static final String CIPHER_ALG = "AES/CBC/PKCS5Padding";
     private static final SecureRandom RND_GENERATOR = new SecureRandom();
-    private static Mac hmac;
-    private static Cipher aes;
     private static IvParameterSpec iv; // Fixed IV for simplicity
 
     static {
         try {
-            hmac = Mac.getInstance(HMAC_ALG);
-            aes = Cipher.getInstance(CIPHER_ALG);
             byte[] ivBytes = new byte[16];
             RND_GENERATOR.nextBytes(ivBytes);
             iv = new IvParameterSpec(ivBytes);
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -66,6 +62,9 @@ public class SSEUtil {
         }
 
         public void update(String keyword, String messageId) throws Exception {
+            Mac hmac = Mac.getInstance(HMAC_ALG);
+            Cipher aes = Cipher.getInstance(CIPHER_ALG);
+
             // Generate keys k1 and k2 from keyword and sk using a PRF
             hmac.init(sk);
             byte[] k1 = hmac.doFinal((keyword + "1").getBytes("UTF-8"));
@@ -90,13 +89,16 @@ public class SSEUtil {
         }
 
         public List<String> search(String keyword) throws Exception {
+            Mac hmac = Mac.getInstance(HMAC_ALG);
+            Cipher aes = Cipher.getInstance(CIPHER_ALG);
+
             // Generate k1 and k2 from keyword, as in the update function
             hmac.init(sk);
             byte[] k1 = hmac.doFinal((keyword + "1").getBytes("UTF-8"));
             byte[] k2 = hmac.doFinal((keyword + "2").getBytes("UTF-8"));
 
             // Send k1 and k2 to the server for search
-            return server.search(k1, k2);
+            return server.search(k1, k2, hmac, aes);
         }
     }
 
@@ -113,7 +115,7 @@ public class SSEUtil {
             index.put(label, value);
         }
 
-        public List<String> search(byte[] k1, byte[] k2) throws Exception {
+        public List<String> search(byte[] k1, byte[] k2, Mac hmac, Cipher aes) throws Exception {
             List<String> results = new ArrayList<>();
             int counter = 0;
 
