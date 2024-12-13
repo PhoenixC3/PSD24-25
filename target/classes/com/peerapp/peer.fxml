@@ -21,6 +21,7 @@
             <TextField fx:id="searchField" layoutX="50" layoutY="10" prefWidth="200" promptText="Search contacts..."/>
             <Button fx:id="searchButton" text="Search" layoutX="50" layoutY="20"/>
             <Button fx:id="refreshButton" text="Refresh" layoutX="50" layoutY="20"/>
+            <Button fx:id="searchKeywordButton" text="Search Keyword" layoutX="50" layoutY="20"/>
             <HBox spacing="5" alignment="CENTER_LEFT">
                 <ProgressIndicator fx:id="searchProgress" 
                         visible="false" 
@@ -30,8 +31,9 @@
                         visible="false" 
                         wrapText="true"/>
             </HBox>
+            <ListView fx:id="searchResultsListView" prefHeight="500" VBox.vgrow="ALWAYS"/>
             <Label text="Available Peers:" style="-fx-font-weight: bold; -fx-background-color: white; -fx-padding: 5; -fx-background-radius: 10;"/>
-            <ListView fx:id="contactsListView" prefHeight="300" VBox.vgrow="ALWAYS"/>
+            <ListView fx:id="contactsListView" prefHeight="500" VBox.vgrow="ALWAYS"/>
 
             <Region styleClass="spacer" minHeight="20" />
             
@@ -43,7 +45,7 @@
                         visible="false" 
                         wrapText="true"/>
             <Label text="Groups you are in:" style="-fx-font-weight: bold; -fx-background-color: white; -fx-padding: 5; -fx-background-radius: 10;"/>
-            <ListView fx:id="groupsListView" prefHeight="300" VBox.vgrow="ALWAYS"/>
+            <ListView fx:id="groupsListView" prefHeight="500" VBox.vgrow="ALWAYS"/>
 
             <Region styleClass="spacer" minHeight="20" />
 

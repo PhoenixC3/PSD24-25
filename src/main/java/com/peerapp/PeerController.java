@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
@@ -28,25 +29,34 @@ import javafx.scene.text.TextFlow;
 public class PeerController {
     @FXML private TextField messageField;
     @FXML private TextField searchField;
+    @FXML private TextField topicField;
+    @FXML private TextField memberField;
+
     @FXML private Button sendButton;
-    @FXML private ScrollPane messagesArea;
-    @FXML private VBox messagesVBox;
-    @FXML private ListView<String> contactsListView;
-    @FXML private Label currentUserIdLabel;
-    @FXML private ProgressIndicator searchProgress;
-    @FXML private Label searchStatusLabel;
     @FXML private Button searchButton;
+    @FXML private Button searchKeywordButton;
     @FXML private Button refreshButton;
     @FXML private Button refreshButtonGroups;
     @FXML private Button createGroupButton;
-    @FXML private ListView<String> groupsListView;
-    @FXML private ListView<String> additionalGroupsListView;
-    @FXML private TextField topicField;
-    @FXML private TextField memberField;
-    @FXML private Label groupStatusLabel;
     @FXML private Button addMemberButton;
 
+    @FXML private ScrollPane messagesArea;
+
+    @FXML private VBox messagesVBox;
+
+    @FXML private ProgressIndicator searchProgress;
+
+    @FXML private ListView<String> contactsListView;
+    @FXML private ListView<String> groupsListView;
+    @FXML private ListView<String> additionalGroupsListView;
+    @FXML private ListView<String> searchResultsListView;
+
+    @FXML private Label currentUserIdLabel;
+    @FXML private Label searchStatusLabel;
+    @FXML private Label groupStatusLabel;
+
     private Peer peer;
+    private SSEUtil.Client sseClient;
 
     //Peers that have already sent messages
     private ObservableList<String> connectedPeers = FXCollections.observableArrayList();
@@ -89,6 +99,9 @@ public class PeerController {
 
     //Message history groups
     private HashMap<String, LinkedList<Message>> convsGroups = new HashMap<String, LinkedList<Message>>();
+
+    //Store messages with their IDs
+    private Map<String, Message> messageStore = new HashMap<>();
 
     private ChangeListener<String> contactSelectionListener = (observable, oldValue, newValue) -> {
         if (newValue != null) {
@@ -134,6 +147,8 @@ public class PeerController {
         try {
             //Create peer object
             peer = new Peer(userId, password, port, this);
+            SSEUtil.Server sseServer = new SSEUtil.Server();
+            this.sseClient = new SSEUtil.Client(sseServer);
 
             configureMessageArea();
             initializeContactsList();
@@ -165,12 +180,14 @@ public class PeerController {
     private void createGroup() {
         String groupTopic = topicField.getText();
 
+        String groupId = "group_" + groupTopic;
+
         if (groupTopic.isEmpty()) {
             showErrorGroup("Group topic cannot be empty.");
             return;
         }
 
-        peer.createGroup(groupTopic);
+        peer.createGroup(groupId);
         topicField.clear();
     }
 
@@ -367,6 +384,7 @@ public class PeerController {
         refreshButtonGroups.setOnAction(event -> additionalGroupsListView.setItems(FXCollections.observableArrayList(peer.getAvailableGroups())));
         
         searchButton.setOnAction(event -> performSearch());
+        searchKeywordButton.setOnAction(event -> performKeywordSearch());
     }
 
     private void refreshContacts() {
@@ -403,7 +421,7 @@ public class PeerController {
                .add(enc);
     }
     
-    //Search for a user to chat with
+    // Perform search for a keyword
     private void performSearch() {
         String searchText = searchField.getText().trim();
 
@@ -421,6 +439,55 @@ public class PeerController {
             searchStatusLabel.setVisible(false);
             searchStatusLabel.setStyle("-fx-text-fill: white;");
         }
+    }
+
+    // Perform search for a keyword
+    private void performKeywordSearch() {
+        String keyword = searchField.getText().trim();
+        if (!keyword.isEmpty()) {
+            searchProgress.setVisible(true);
+            searchStatusLabel.setText("Searching...");
+            searchStatusLabel.setVisible(true);
+            searchStatusLabel.setStyle("-fx-text-fill: white;");
+            new Thread(() -> {
+                try {
+                    List<String> results = sseClient.search(keyword);
+                    List<String> formattedResults = new ArrayList<>();
+                    for (String messageId : results) {
+                        formattedResults.add(getMessageDetails(messageId));
+                    }
+                    Platform.runLater(() -> {
+                        searchResultsListView.getItems().clear();
+                        if (formattedResults.isEmpty()) {
+                            searchStatusLabel.setText("No results found");
+                        } else {
+                            searchResultsListView.getItems().addAll(formattedResults);
+                            System.out.println("found keyword: " + keyword + " in messages: " + results);
+                            System.out.println("found keyword: " + keyword + " in messages: " + formattedResults);
+                            searchStatusLabel.setText("Search complete");
+                        }
+                        searchProgress.setVisible(false);
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Platform.runLater(() -> {
+                        searchProgress.setVisible(false);
+                        searchStatusLabel.setText("Search failed");
+                    });
+                }
+            }).start();
+        }
+    }
+
+    // Update keyword index when a message is sent
+    private void updateKeywordIndex(String keyword, String messageId) {
+        new Thread(() -> {
+            try {
+                sseClient.update(keyword, messageId);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
     
     //Enter a conversation tab with a certain user
@@ -482,6 +549,10 @@ public class PeerController {
         }
     }
 
+    private String generateMessageId() {
+        return UUID.randomUUID().toString();
+    }
+
     //Send a message
     private void sendMessage() {
         String message = messageField.getText().trim();
@@ -493,6 +564,7 @@ public class PeerController {
         
         if (!message.isEmpty()) {
         	Message sent;
+            String messageId = generateMessageId();
 
             if (isGroupConversation(activeConversationId)) {
                 // Send group message
@@ -528,15 +600,37 @@ public class PeerController {
                     addMessageToConv("Me: " + message, sent, activeConversationId);
 
                     moveContactUp(activeConversationId);
-                } 
-                else {
+
+                } else {
                     addErrorMessage("Failed to send message: User does not exist");
                     messageField.clear();
                 }
             }
+
+            // Store the message with its ID
+            messageStore.put(messageId, sent);
+
+            // Update keyword index
+            String[] keywords = message.split("\\s+");
+            for (String keyword : keywords) {
+                updateKeywordIndex(keyword, messageId);
+                System.out.println("keyword: " + keyword + " added to index: " + messageId);
+            }
         } else {
         	addErrorMessage("Please enter a message.");
         }
+    }
+
+    //Get the message details
+    private String getMessageDetails(String messageId) {
+        Message message = messageStore.get(messageId);
+        if (message != null) {
+            String sender = message.getSender();
+            String recipient = message.getRecipient();
+            String keyword = message.getEncryptedContent();
+            return "\"" + keyword + "\" from chat with \"" + (sender.equals(peer.getUserId()) ? recipient : sender) + "\"";
+        }
+        return "Message not found";
     }
 
     private boolean isGroupConversation(String conversationId) {
