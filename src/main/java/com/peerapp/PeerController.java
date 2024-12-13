@@ -104,9 +104,6 @@ public class PeerController {
     //Message history groups
     private HashMap<String, LinkedList<Message>> convsGroups = new HashMap<String, LinkedList<Message>>();
 
-    //Store messages with their IDs
-    private Map<String, Message> messageStore = new HashMap<>();
-
     private ChangeListener<String> contactSelectionListener = (observable, oldValue, newValue) -> {
         if (newValue != null) {
             startConversationWithPeer(newValue);
@@ -571,10 +568,11 @@ public class PeerController {
         if (!message.isEmpty()) {
         	Message sent = null;
             String messageId = generateMessageId();
+            String[] keywords = message.split("\\s+");
 
             if (activeGroupConversationId != null) {
                 // Send group message
-                sent = peer.sendGroupMessage(activeGroupConversationId, message);
+                sent = peer.sendGroupMessage(activeGroupConversationId, message, messageId, keywords);
 
                 // Add message to group history
                 messageHistoryGroups.computeIfAbsent(activeGroupConversationId, k -> new ArrayList<>())
@@ -591,7 +589,7 @@ public class PeerController {
 
             } else if (activeConversationId != null) {
                 // Send individual message
-                sent = peer.sendMessage(activeConversationId, message);
+                sent = peer.sendMessage(activeConversationId, message, messageId, keywords);
 
                 if (sent != null) {
                     // Add message to individual history
@@ -613,11 +611,7 @@ public class PeerController {
                 }
             }
 
-            // Store the message with its ID
-            messageStore.put(messageId, sent);
-
             // Update keyword index
-            String[] keywords = message.split("\\s+");
             for (String keyword : keywords) {
                 updateKeywordIndex(keyword, messageId);
                 System.out.println("keyword: " + keyword + " added to index: " + messageId);
@@ -629,20 +623,40 @@ public class PeerController {
 
     //Get the message details
     private String getMessageDetails(String messageId) {
-        Message message = messageStore.get(messageId);
+        Message message = getMessageById(messageId);
 
         if (message != null) {
             if (message.getGroup() == null) {
                 String sender = message.getSender();
                 String recipient = message.getRecipient();
 
-                return "\"" + peer.decryptMessage(message) + "\" from chat with \"" + (sender.equals(peer.getUserId()) ? recipient : sender) + "\"";
+                return "\"" + peer.decryptMessage(message) + "\" from chat with \"" + (sender.equals(peer.getUserId()) ? recipient : sender) + "\" from \"" + message.getSender() + "\"";
             } else {
                 return "\"" + peer.decryptMessage(message) + "\" from chat with group \"" + message.getGroup() + "\" from \"" + message.getSender() + "\"";
             }
         }
 
         return "Message not found";
+    }
+
+    private Message getMessageById(String messageId) {
+        for (String key : convs.keySet()) {
+            for (Message message : convs.get(key)) {
+                if (message.getMessageId().equals(messageId)) {
+                    return message;
+                }
+            }
+        }
+
+        for (String key : convsGroups.keySet()) {
+            for (Message message : convsGroups.get(key)) {
+                if (message.getMessageId().equals(messageId)) {
+                    return message;
+                }
+            }
+        }
+
+        return null;
     }
 
     //Visual representation of the message
@@ -690,6 +704,12 @@ public class PeerController {
                 refreshContactsList();
             }
 
+            // Update keyword index
+            for (String keyword : msg.getKeywords()) {
+                updateKeywordIndex(keyword, msg.getMessageId());
+                System.out.println("keyword: " + keyword + " added to index: " + msg.getMessageId());
+            }
+
             String musicFile = "zap.mp3";
             Media sound = new Media(new File(musicFile).toURI().toString());
             MediaPlayer mediaPlayer = new MediaPlayer(sound);
@@ -713,6 +733,12 @@ public class PeerController {
                 //Unread messages bubble
                 unreadMessageCountsGroup.merge(group, 1, Integer::sum);
                 refreshGroupsList();
+            }
+
+            // Update keyword index
+            for (String keyword : msg.getKeywords()) {
+                updateKeywordIndex(keyword, msg.getMessageId());
+                System.out.println("keyword: " + keyword + " added to index: " + msg.getMessageId());
             }
 
             String musicFile = "zap.mp3";

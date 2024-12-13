@@ -108,7 +108,7 @@ public class Peer {
     }
 
     //Send a message through client socket
-    public synchronized Message sendMessage(String recipient, String content) {
+    public synchronized Message sendMessage(String recipient, String content, String msgId, String[] keywords) {
         SSLSocket socket = null;
         ObjectOutputStream oos = null;
 
@@ -131,7 +131,7 @@ public class Peer {
                 String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
         
                 // Create message object
-                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv);
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords);
                 oos = new ObjectOutputStream(socket.getOutputStream());
                 oos.writeObject(message);
                 oos.flush();
@@ -149,7 +149,7 @@ public class Peer {
                 String signedMessageMe = EncryptionUtil.signMessage(encryptedContentMe[0], privKeyMe);
         
                 // Create message object
-                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe);
+                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, keywords);
 
 
                 return messageForMe;
@@ -167,7 +167,7 @@ public class Peer {
                 PrivateKey privKey = EncryptionUtil.getPrivateKeyFromKeystore("keystores/" + userId + "_keystore.jks", password, userId, password);
                 String signedMessage = EncryptionUtil.signMessage(encryptedContent[0], privKey);
         
-                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv);
+                Message message = new Message(userId, recipient, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords);
 
                 refreshServer();
 
@@ -194,7 +194,7 @@ public class Peer {
                 String signedMessageMe = EncryptionUtil.signMessage(encryptedContentMe[0], privKeyMe);
         
                 // Create message object
-                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe);
+                Message messageForMe = new Message(userId, recipient, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, keywords);
 
                 return messageForMe;
             }
@@ -206,7 +206,7 @@ public class Peer {
         return null;
     }
 
-    public synchronized Message sendGroupMessage(String group, String content) {
+    public synchronized Message sendGroupMessage(String group, String content, String msgId, String[] keywords) {
         try {
             oosServer.writeObject("GETGROUPMEMBERS");
             oosServer.flush();
@@ -242,7 +242,7 @@ public class Peer {
                                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
                         
                                 // Create message object
-                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, group);
+                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords, group);
                                 oos = new ObjectOutputStream(socket.getOutputStream());
                                 oos.writeObject(message);
                                 oos.flush();
@@ -252,7 +252,7 @@ public class Peer {
                                 PublicKey pubKey = EncryptionUtil.getPublicKeyFromTrustStore("truststores/" + userId + "_truststore.jks", password, mem);
                                 byte[] encryptedKey = EncryptionUtil.encryptAESKey(key, pubKey);
                         
-                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, group);
+                                message = new Message(userId, mem, encryptedKey, encryptedContent[0], signedMessage, iv, msgId, keywords, group);
                 
                                 refreshServer();
                 
@@ -290,7 +290,7 @@ public class Peer {
                 String signedMessageMe = EncryptionUtil.signMessage(encryptedContentMe[0], privKeyMe);
         
                 // Create message object
-                Message messageForMe = new Message(userId, userId, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, group);
+                Message messageForMe = new Message(userId, userId, encryptedKeyMe, encryptedContentMe[0], signedMessageMe, ivMe, msgId, keywords, group);
 
                 return messageForMe;
             }
