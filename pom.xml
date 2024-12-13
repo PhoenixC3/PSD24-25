@@ -24,7 +24,6 @@
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics </artifactId>
             <version>23</version>
-            <classifier>win</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
@@ -98,6 +97,15 @@
                 <version>0.0.6</version>
                 <configuration>
                     <mainClass>com.peerapp.P2PApp</mainClass>
+                    <modulePath>true</modulePath>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.peerapp.SSLServer</mainClass>
                     <modulePath>true</modulePath>
                 </configuration>
             </plugin>
