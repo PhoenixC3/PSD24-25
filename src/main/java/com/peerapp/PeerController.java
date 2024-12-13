@@ -76,6 +76,9 @@ public class PeerController {
     private String activeConversationId;
 
     //User that we are currently chatting with
+    private String activeGroupConversationId;
+
+    //User that we are currently chatting with
     private String selectedGroup;
 
     //Message history
@@ -101,6 +104,7 @@ public class PeerController {
             // Deselect the groups list
             groupsListView.getSelectionModel().clearSelection();
             addMemberButton.setVisible(false);
+            activeGroupConversationId = null;
         }
     };
 
@@ -115,6 +119,7 @@ public class PeerController {
             // Deselect the contacts list
             contactsListView.getSelectionModel().clearSelection();
             addMemberButton.setVisible(false);
+            activeConversationId = null;
         }
     };
 
@@ -334,7 +339,7 @@ public class PeerController {
     }
 
     private void startConversationWithGroup(String groupId) {
-        activeConversationId = groupId;
+        activeGroupConversationId = groupId;
         currentUserIdLabel.setText("Chatting in group: " + groupId);
     
         messagesVBox.getChildren().clear();
@@ -486,7 +491,7 @@ public class PeerController {
     private void sendMessage() {
         String message = messageField.getText().trim();
 
-        if (activeConversationId == null) {
+        if (activeConversationId == null && activeGroupConversationId == null) {
         	addErrorMessage("No conversation selected. Start a chat first.");
         	return;
         }
@@ -494,12 +499,12 @@ public class PeerController {
         if (!message.isEmpty()) {
         	Message sent;
 
-            if (isGroupConversation(activeConversationId)) {
+            if (activeGroupConversationId != null) {
                 // Send group message
-                sent = peer.sendGroupMessage(activeConversationId, message);
+                sent = peer.sendGroupMessage(activeGroupConversationId, message);
 
                 // Add message to group history
-                messageHistoryGroups.computeIfAbsent(activeConversationId, k -> new ArrayList<>())
+                messageHistoryGroups.computeIfAbsent(activeGroupConversationId, k -> new ArrayList<>())
                                     .add(new ChatMessage(peer.getUserId(), message, true));
     
                 displayMessageBubble(peer.getUserId(), message, true);
@@ -507,11 +512,11 @@ public class PeerController {
                 messageField.clear();
 
                 //Add message to conversation history
-                addMessageToConvGroup("Me: " + message, sent, activeConversationId);
+                addMessageToConvGroup("Me: " + message, sent, activeGroupConversationId);
 
-                moveGroupUp(activeConversationId);
+                moveGroupUp(activeGroupConversationId);
 
-            } else {
+            } else if (activeConversationId != null) {
                 // Send individual message
                 sent = peer.sendMessage(activeConversationId, message);
 
@@ -537,11 +542,6 @@ public class PeerController {
         } else {
         	addErrorMessage("Please enter a message.");
         }
-    }
-
-    private boolean isGroupConversation(String conversationId) {
-        // Implement logic to check if the conversationId belongs to a group
-        return groupsListView.getItems().contains(conversationId);
     }
 
     //Visual representation of the message
@@ -606,7 +606,7 @@ public class PeerController {
             addMessageToConvGroup(sender + ": " + content, msg, group);
             moveGroupUp(group);
 
-            if (activeConversationId != null && activeConversationId.equals(group)) {
+            if (activeGroupConversationId != null && activeGroupConversationId.equals(group)) {
                 displayMessageBubble(sender, content, false);
             } else {
                 //Unread messages bubble
