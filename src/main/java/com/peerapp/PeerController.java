@@ -484,15 +484,23 @@ public class PeerController {
 
     // Perform search for a keyword
     private void performKeywordSearch() {
-        String keyword = searchKeywordField.getText().trim();
-        if (!keyword.isEmpty()) {
+        String[] keyword = searchKeywordField.getText().trim().split(" ");
+        List<String> keywords = new ArrayList<>();
+
+        for (String k : keyword) {
+            if (!k.isEmpty()) {
+                keywords.add(k);
+            }
+        }
+
+        if (!keywords.isEmpty()) {
             searchProgress.setVisible(true);
             searchStatusLabel.setText("Searching...");
             searchStatusLabel.setVisible(true);
             searchStatusLabel.setStyle("-fx-text-fill: white;");
 
             try {
-                List<String> results = sseClient.search(keyword);
+                List<String> results = sseClient.search(keywords);
                 List<String> formattedResults = new ArrayList<>();
                 for (String messageId : results) {
                     formattedResults.add(getMessageDetails(messageId));

@@ -88,17 +88,30 @@ public class SSEUtil {
             counters.put(keyword, counter + 1);
         }
 
-        public List<String> search(String keyword) throws Exception {
+        public List<String> search(List<String> keywords) throws Exception {
             Mac hmac = Mac.getInstance(HMAC_ALG);
             Cipher aes = Cipher.getInstance(CIPHER_ALG);
-
-            // Generate k1 and k2 from keyword, as in the update function
-            hmac.init(sk);
-            byte[] k1 = hmac.doFinal((keyword + "1").getBytes("UTF-8"));
-            byte[] k2 = hmac.doFinal((keyword + "2").getBytes("UTF-8"));
-
-            // Send k1 and k2 to the server for search
-            return server.search(k1, k2, hmac, aes);
+        
+            List<Set<String>> allResults = new ArrayList<>();
+        
+            for (String keyword : keywords) {
+                // Generate k1 and k2 from keyword, as in the update function
+                hmac.init(sk);
+                byte[] k1 = hmac.doFinal((keyword + "1").getBytes("UTF-8"));
+                byte[] k2 = hmac.doFinal((keyword + "2").getBytes("UTF-8"));
+        
+                // Perform search for the current keyword
+                List<String> results = server.search(k1, k2, hmac, aes);
+                allResults.add(new HashSet<>(results));
+            }
+        
+            // Intersect all results to get sentences containing all keywords
+            Set<String> finalResults = allResults.get(0);
+            for (int i = 1; i < allResults.size(); i++) {
+                finalResults.retainAll(allResults.get(i));
+            }
+        
+            return new ArrayList<>(finalResults);
         }
     }
 
