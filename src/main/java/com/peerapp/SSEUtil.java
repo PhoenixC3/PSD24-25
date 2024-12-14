@@ -88,30 +88,49 @@ public class SSEUtil {
             counters.put(keyword, counter + 1);
         }
 
-        public List<String> search(List<String> keywords) throws Exception {
+        public List<String> search(String query) throws Exception {
             Mac hmac = Mac.getInstance(HMAC_ALG);
             Cipher aes = Cipher.getInstance(CIPHER_ALG);
-        
-            List<Set<String>> allResults = new ArrayList<>();
-        
-            for (String keyword : keywords) {
-                // Generate k1 and k2 from keyword, as in the update function
+            
+            String[] queryWords = query.split(" ");
+
+            for (int i = 0; i < queryWords.length; i++) {
+                queryWords[i] = queryWords[i].toLowerCase();
+            }
+            
+            //Seach for each keyword
+            Map<String, List<String>> resultsByKeyword = new HashMap<>();
+            Set<String> allResults = new HashSet<>();
+            
+            for (String keyword : queryWords) {
+                // Generate k1 and k2 from keyword
                 hmac.init(sk);
                 byte[] k1 = hmac.doFinal((keyword + "1").getBytes("UTF-8"));
                 byte[] k2 = hmac.doFinal((keyword + "2").getBytes("UTF-8"));
-        
-                // Perform search for the current keyword
+                
+                // Search for the current keyword
                 List<String> results = server.search(k1, k2, hmac, aes);
-                allResults.add(new HashSet<>(results));
+                resultsByKeyword.put(keyword, results); // Store results per keyword
+                allResults.addAll(results); // Collect all unique results
             }
-        
-            // Intersect all results to get sentences containing all keywords
-            Set<String> finalResults = allResults.get(0);
-            for (int i = 1; i < allResults.size(); i++) {
-                finalResults.retainAll(allResults.get(i));
+            
+            //Rank results based on keyword match count (both > one)
+            Map<String, Integer> resultScores = new HashMap<>();
+            for (String result : allResults) {
+                int score = 0;
+                for (String keyword : queryWords) {
+                    if (resultsByKeyword.getOrDefault(keyword, Collections.emptyList()).contains(result)) {
+                        score++; // Increase score for each occurrence of the keyword
+                    }
+                }
+                resultScores.put(result, score);
             }
-        
-            return new ArrayList<>(finalResults);
+            
+            //Sort by rank
+            List<String> sortedResults = new ArrayList<>(allResults);
+            sortedResults.sort((a, b) -> resultScores.get(b) - resultScores.get(a));
+            
+            return sortedResults;
         }
     }
 

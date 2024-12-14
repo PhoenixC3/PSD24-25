@@ -484,23 +484,16 @@ public class PeerController {
 
     // Perform search for a keyword
     private void performKeywordSearch() {
-        String[] keyword = searchKeywordField.getText().trim().split(" ");
-        List<String> keywords = new ArrayList<>();
+        String keyword = searchKeywordField.getText().trim();
 
-        for (String k : keyword) {
-            if (!k.isEmpty()) {
-                keywords.add(k);
-            }
-        }
-
-        if (!keywords.isEmpty()) {
+        if (!keyword.isEmpty()) {
             searchProgress.setVisible(true);
             searchStatusLabel.setText("Searching...");
             searchStatusLabel.setVisible(true);
             searchStatusLabel.setStyle("-fx-text-fill: white;");
 
             try {
-                List<String> results = sseClient.search(keywords);
+                List<String> results = sseClient.search(keyword);
                 List<String> formattedResults = new ArrayList<>();
                 for (String messageId : results) {
                     formattedResults.add(getMessageDetails(messageId));
@@ -529,6 +522,8 @@ public class PeerController {
 
     // Update keyword index when a message is sent
     private void updateKeywordIndex(String keyword, String messageId) {
+        keyword = keyword.toLowerCase();
+
         try {
             sseClient.update(keyword, messageId);
         } catch (Exception e) {
